@@ -74,10 +74,38 @@ export async function getProjectsByUserId(userId: string): Promise<Project[]> {
 }
 
 /**
- * Delete a project (cascades to pages and jobs)
+ * Delete a project (cascades to pages)
  */
 export async function deleteProject(id: string): Promise<Project> {
   return prisma.project.delete({
     where: { id },
+  });
+}
+
+/**
+ * Confirm GBP selection and save place details
+ */
+export async function confirmGbpSelection(
+  projectId: string,
+  placeId: string,
+  websiteUrl: string | null
+): Promise<Project> {
+  return prisma.project.update({
+    where: { id: projectId },
+    data: {
+      selectedPlaceId: placeId,
+      selectedWebsiteUrl: websiteUrl,
+      status: 'GBP_SELECTED',
+    },
+  });
+}
+
+/**
+ * Get project with pages included
+ */
+export async function getProjectWithPages(id: string) {
+  return prisma.project.findUnique({
+    where: { id },
+    include: { pages: true },
   });
 }

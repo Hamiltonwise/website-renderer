@@ -20,8 +20,8 @@ enum ProjectStatus {
   CREATED
   GBP_SELECTED
   GBP_SCRAPED
-  IMAGES_ANALYZED
   WEBSITE_SCRAPED
+  IMAGES_ANALYZED
   HTML_GENERATED
   READY
 
@@ -36,24 +36,6 @@ enum PageStatus {
   @@schema("website_builder")
 }
 
-enum JobType {
-  GBP_SCRAPE
-  IMAGE_ANALYSIS
-  WEBSITE_SCRAPE
-  HTML_GENERATION
-
-  @@schema("website_builder")
-}
-
-enum JobStatus {
-  pending
-  running
-  success
-  failed
-
-  @@schema("website_builder")
-}
-
 // ============================================
 // MODELS
 // ============================================
@@ -64,14 +46,21 @@ model Project {
   userId             String        @map("user_id")
   generatedHostname  String        @unique @map("generated_hostname")
   status             ProjectStatus @default(CREATED)
-  gbpData            Json?         @map("gbp_data")
-  scrapedWebsiteData Json?         @map("scraped_website_data")
+
+  // User inputs (from GBP selection)
+  selectedPlaceId    String?       @map("selected_place_id")
+  selectedWebsiteUrl String?       @map("selected_website_url")
+
+  // Step data columns (populated by n8n workflows)
+  stepGbpScrape      Json?         @map("step_gbp_scrape")      // Full GBP data from scrape
+  stepWebsiteScrape  Json?         @map("step_website_scrape")  // Full HTML scrape of website
+  stepImageAnalysis  Json?         @map("step_image_analysis")  // Array of {s3Url, description}
+
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
 
   // Relations
   pages Page[]
-  jobs  Job[]
 
   @@map("projects")
   @@schema("website_builder")
@@ -108,29 +97,5 @@ model Template {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("templates")
-  @@schema("website_builder")
-}
-
-/// Async job for long-running workflows
-model Job {
-  id         String    @id @default(uuid())
-  projectId  String    @map("project_id")
-  type       JobType
-  status     JobStatus @default(pending)
-  attempts   Int       @default(0)
-  payload    Json?
-  error      String?   @db.Text
-  startedAt  DateTime? @map("started_at")
-  finishedAt DateTime? @map("finished_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
-
-  // Relations
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([type])
-  @@index([status])
-  @@map("jobs")
   @@schema("website_builder")
 }
