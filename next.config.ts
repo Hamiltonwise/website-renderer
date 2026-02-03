@@ -7,6 +7,7 @@ import { env } from './src/server/env';
  * @see https://nextjs.org/docs/api-reference/next.config.js/introduction
  */
 export default {
+  output: 'export',
   /**
    * Dynamic configuration available for the browser and server.
    * Note: requires `ssr: true` or a `getInitialProps` in `_app.tsx`
