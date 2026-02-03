@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
+import { scrapeLogger } from '@/lib/logger';
 
 interface ScrapeResponse {
   success: boolean;
   baseUrl: string;
   pages: Record<string, string>; // pageName: htmlContent
   images: string[]; // max 10 random images
+  elapsedMs: number; // time elapsed in milliseconds
+  charLength: number; // total character length of all pages combined
+  estimatedTokens: number; // estimated token count for AI input
   error?: string;
+}
+
+/**
+ * Estimate token count from text
+ * Uses a rough heuristic: ~4 characters per token for English text
+ * HTML tends to be more verbose, so we use ~3.5 chars per token
+ */
+function estimateTokens(text: string): number {
+  // Average ~3.5 characters per token for HTML content
+  // This accounts for tags, attributes, and mixed content
+  return Math.ceil(text.length / 3.5);
 }
 
 /**
@@ -85,7 +100,7 @@ async function fetchPage(url: string): Promise<string | null> {
 
     return await response.text();
   } catch (error) {
-    console.error(`[Scrape] Failed to fetch ${url}:`, error);
+    scrapeLogger.error(`Failed to fetch ${url}`, { error: String(error) });
     return null;
   }
 }
@@ -196,6 +211,8 @@ function getRandomItems<T>(arr: T[], n: number): T[] {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const body = await request.json();
     const { url } = body;
@@ -219,11 +236,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Scrape] Starting scrape for:', baseUrl);
+    scrapeLogger.info('Starting scrape', { url, baseUrl });
 
     // Fetch home page
     const homeHtml = await fetchPage(url);
     if (!homeHtml) {
+      scrapeLogger.error('Failed to fetch home page', { url });
       return NextResponse.json(
         { success: false, error: 'Failed to fetch home page' },
         { status: 500 }
@@ -232,15 +250,16 @@ export async function POST(request: NextRequest) {
 
     // Extract internal links from home page
     const internalLinks = extractInternalLinks(homeHtml, baseUrl);
-    console.log('[Scrape] Found internal links:', internalLinks.length);
+    scrapeLogger.info('Found internal links', { count: internalLinks.length });
 
     // Collect pages and images
     const pages: Record<string, string> = {};
-    const allImages: string[] = [];
+    const homeImages: string[] = [];
+    const otherImages: string[] = [];
 
     // Add home page
     pages['home'] = homeHtml;
-    allImages.push(...extractImages(homeHtml, baseUrl));
+    homeImages.push(...extractImages(homeHtml, baseUrl));
 
     // Fetch linked pages (limit to 10 to avoid too many requests)
     const linksToFetch = internalLinks.slice(0, 10);
@@ -253,30 +272,57 @@ export async function POST(request: NextRequest) {
           // Avoid overwriting if we already have a page with this name
           const uniqueName = pages[pageName] ? `${pageName}-${Date.now()}` : pageName;
           pages[uniqueName] = html;
-          allImages.push(...extractImages(html, baseUrl));
+          otherImages.push(...extractImages(html, baseUrl));
         }
       })
     );
 
-    // Deduplicate images and get random 10
-    const uniqueImages = [...new Set(allImages)];
-    const randomImages = getRandomItems(uniqueImages, 10);
+    // Prioritize homepage images, then fill with other images
+    const uniqueHomeImages = [...new Set(homeImages)];
+    const uniqueOtherImages = [...new Set(otherImages)].filter(img => !uniqueHomeImages.includes(img));
 
-    console.log('[Scrape] Scraped pages:', Object.keys(pages).length);
-    console.log('[Scrape] Total unique images:', uniqueImages.length);
-    console.log('[Scrape] Returning random images:', randomImages.length);
+    // Take all homepage images first (up to 10), then fill remaining slots with other images
+    let selectedImages: string[];
+    if (uniqueHomeImages.length >= 10) {
+      selectedImages = getRandomItems(uniqueHomeImages, 10);
+    } else {
+      const remainingSlots = 10 - uniqueHomeImages.length;
+      const otherSelected = getRandomItems(uniqueOtherImages, remainingSlots);
+      selectedImages = [...uniqueHomeImages, ...otherSelected];
+    }
+
+    // Calculate total character length and estimated tokens
+    const allContent = Object.values(pages).join('');
+    const charLength = allContent.length;
+    const estimatedTokens = estimateTokens(allContent);
+
+    const elapsedMs = Date.now() - startTime;
+
+    scrapeLogger.info('Scrape completed', {
+      baseUrl,
+      pagesScraped: Object.keys(pages).length,
+      homepageImages: uniqueHomeImages.length,
+      otherImages: uniqueOtherImages.length,
+      selectedImages: selectedImages.length,
+      charLength,
+      estimatedTokens,
+      elapsedMs,
+    });
 
     const response: ScrapeResponse = {
       success: true,
       baseUrl,
       pages,
-      images: randomImages,
+      images: selectedImages,
+      elapsedMs,
+      charLength,
+      estimatedTokens,
     };
 
     return NextResponse.json(response);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Scrape] Error:', error);
+    scrapeLogger.error('Scrape failed', { error: message });
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }

@@ -38,11 +38,15 @@ export interface Page {
   updated_at: Date;
 }
 
+// Template status enum
+export type TemplateStatus = 'draft' | 'published';
+
 // Template model
 export interface Template {
   id: string;
   name: string;
   html_template: string;
+  status: TemplateStatus;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;

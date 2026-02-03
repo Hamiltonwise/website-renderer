@@ -1,0 +1,6 @@
+[2026-02-03T21:41:15.634Z] [SCRAPE] [INFO] Starting scrape | {"url":"https://sdcendo.com/","baseUrl":"https://sdcendo.com"}
+[2026-02-03T21:41:18.576Z] [SCRAPE] [INFO] Found internal links | {"count":8}
+[2026-02-03T21:41:25.231Z] [SCRAPE] [INFO] Scrape completed | {"baseUrl":"https://sdcendo.com","pagesScraped":8,"homepageImages":67,"otherImages":87,"selectedImages":10,"charLength":1614449,"estimatedTokens":461272,"elapsedMs":9605}
+[2026-02-03T21:42:00.195Z] [SCRAPE] [INFO] Starting scrape | {"url":"https://sdcendsao.com/","baseUrl":"https://sdcendsao.com"}
+[2026-02-03T21:42:01.473Z] [SCRAPE] [ERROR] Failed to fetch https://sdcendsao.com/ | {"error":"TypeError: fetch failed"}
+[2026-02-03T21:42:01.481Z] [SCRAPE] [ERROR] Failed to fetch home page | {"url":"https://sdcendsao.com/"}

@@ -1,0 +1,85 @@
+name: Build and Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Inject .env file from GitHub Secrets
+      - name: Create .env.local file
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env.local
+
+      # Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Build Next.js app
+      - name: Build Next.js
+        run: npm run build
+
+      # Prepare deployment bundle
+      - name: Prepare deploy bundle
+        run: |
+          mkdir -p bundle
+          cp -r .next bundle/
+          cp -r public bundle/ 2>/dev/null || true
+          cp package*.json bundle/
+          cp next.config.ts bundle/ 2>/dev/null || true
+          cp next.config.js bundle/ 2>/dev/null || true
+          cp ecosystem.config.js bundle/
+          cp .env.local bundle/
+          mkdir -p bundle/logs
+
+      # Clean EC2 target directory
+      - name: Clean remote target dir
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          port: ${{ secrets.EC2_PORT }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            rm -rf ${{ secrets.TARGET_DIR }}/*
+            mkdir -p ${{ secrets.TARGET_DIR }}
+
+      # Upload bundle to EC2
+      - name: Upload bundle to EC2
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          port: ${{ secrets.EC2_PORT }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "bundle/**"
+          target: ${{ secrets.TARGET_DIR }}
+          strip_components: 1
+
+      # Restart Node app with PM2
+      - name: Start/Reload PM2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          port: ${{ secrets.EC2_PORT }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+            nvm use node
+            cd ${{ secrets.TARGET_DIR }}
+            npm install --production
+            pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js

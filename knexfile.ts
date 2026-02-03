@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: '.env.local' });
 
-const defaultSchema = process.env.DATABASE_SCHEMA || 'website-builder';
+const defaultSchema = process.env.DATABASE_SCHEMA || 'website_builder';
 
 const config = {
   development: {
@@ -14,6 +14,7 @@ const config = {
       database: process.env.DATABASE_NAME,
       user: process.env.DATABASE_USER,
       password: process.env.DATABASE_PASSWORD,
+      ssl: process.env.DATABASE_HOST !== 'localhost' ? { rejectUnauthorized: false } : false,
     },
     pool: {
       min: 2,

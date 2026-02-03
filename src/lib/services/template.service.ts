@@ -1,5 +1,5 @@
 import { getDb } from '../db';
-import type { Template } from '@/types';
+import type { Template, TemplateStatus } from '@/types';
 
 const db = getDb();
 
@@ -28,7 +28,14 @@ export async function getAllTemplates(): Promise<Template[]> {
 }
 
 /**
- * Create a new template
+ * Get all published templates
+ */
+export async function getPublishedTemplates(): Promise<Template[]> {
+  return db('templates').where({ status: 'published' }).orderBy('created_at', 'desc');
+}
+
+/**
+ * Create a new template as draft
  */
 export async function createTemplate(
   name: string,
@@ -46,8 +53,33 @@ export async function createTemplate(
     .insert({
       name,
       html_template: htmlTemplate,
+      status: 'draft' as TemplateStatus,
       is_active: isActive,
     })
+    .returning('*');
+
+  return template;
+}
+
+/**
+ * Publish a template (change status from draft to published)
+ */
+export async function publishTemplate(id: string): Promise<Template> {
+  const [template] = await db('templates')
+    .where({ id })
+    .update({ status: 'published' as TemplateStatus, updated_at: db.fn.now() })
+    .returning('*');
+
+  return template;
+}
+
+/**
+ * Unpublish a template (change status from published to draft)
+ */
+export async function unpublishTemplate(id: string): Promise<Template> {
+  const [template] = await db('templates')
+    .where({ id })
+    .update({ status: 'draft' as TemplateStatus, updated_at: db.fn.now() })
     .returning('*');
 
   return template;
