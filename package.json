@@ -1,75 +1,37 @@
 {
-  "name": "examples-trpc-next-prisma-starter",
+  "name": "website-builder-rebuild",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "generate": "prisma generate",
-    "prisma-studio": "prisma studio",
-    "db-seed": "prisma db seed",
-    "db-reset": "prisma migrate dev reset",
-    "dx:next": "run-s migrate-dev db-seed && next dev",
-    "dx:prisma-studio": "pnpm prisma-studio",
-    "dx": "run-p dx:* --print-label",
-    "dev": "pnpm next dev -p 7777 --turbopack",
-    "prebuild": "run-s generate migrate",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint --cache src",
-    "lint-fix": "pnpm lint --fix",
-    "migrate-dev": "prisma migrate dev",
-    "migrate": "prisma migrate deploy",
-    "test-unit": "vitest",
-    "test-e2e": "playwright test",
-    "test-start": "run-s test-unit test-e2e",
-    "postinstall": "pnpm generate",
-    "typecheck": "tsc --noEmit"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
-  "prettier": {
-    "printWidth": 80,
-    "trailingComma": "all",
-    "singleQuote": true
+    "lint": "eslint",
+    "db:migrate": "knex migrate:latest --knexfile knexfile.ts",
+    "db:migrate:rollback": "knex migrate:rollback --knexfile knexfile.ts",
+    "db:seed": "knex seed:run --knexfile knexfile.ts",
+    "db:migrate:make": "knex migrate:make --knexfile knexfile.ts -x ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.7.0",
-    "@tanstack/react-query": "^5.80.3",
-    "@trpc/client": "canary",
-    "@trpc/next": "canary",
-    "@trpc/react-query": "canary",
-    "@trpc/server": "canary",
     "cheerio": "^1.2.0",
-    "clsx": "^2.0.0",
-    "next": "^15.3.8",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "superjson": "^1.12.4",
-    "zod": "^4.2.1"
+    "dotenv": "^17.2.3",
+    "framer-motion": "^12.31.0",
+    "knex": "^3.1.0",
+    "lucide-react": "^0.563.0",
+    "next": "16.1.6",
+    "pg": "^8.18.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.1",
-    "@types/node": "^22.13.5",
-    "@types/react": "^19.1.0",
-    "autoprefixer": "^10.4.7",
-    "dotenv": "^16.0.1",
-    "eslint": "^9.26.0",
-    "eslint-config-next": "^15.3.1",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "6.0.0-rc.1",
-    "npm-run-all": "^4.1.5",
-    "postcss": "^8.4.39",
-    "prettier": "^3.3.3",
-    "prisma": "^6.7.0",
-    "start-server-and-test": "^1.12.0",
-    "tailwindcss": "^3.4.6",
-    "tsx": "^4.19.3",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.31.1",
-    "vite": "^6.1.1",
-    "vitest": "^3.1.2"
-  },
-  "publishConfig": {
-    "access": "restricted"
-  },
-  "version": "11.9.0"
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
 }

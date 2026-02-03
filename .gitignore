@@ -3,14 +3,15 @@
 # dependencies
 /node_modules
 /.pnp
-.pnp.js
-.yarn/install-state.gz
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
 # testing
 /coverage
-playwright-report/
-playwright/.cache/
-playwright/test-results
 
 # next.js
 /.next/
@@ -22,8 +23,6 @@ playwright/test-results
 # misc
 .DS_Store
 *.pem
-tsconfig.tsbuildinfo
-next-env.d.ts
 
 # debug
 npm-debug.log*
@@ -31,46 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# local env files
-.env
-.env*.local
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-
-# IDE
-.idea/
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-
-# Database
-*.db
-*.db-journal
-prisma/*.db
-prisma/*.db-journal
-
-# Sentry
-.sentryclirc
-
-# Turbo
-.turbo
-
-# PWA
-**/public/sw.js
-**/public/workbox-*.js
-**/public/worker-*.js
-**/public/sw.js.map
-**/public/workbox-*.js.map
-**/public/worker-*.js.map
-.env
-.env
+next-env.d.ts
