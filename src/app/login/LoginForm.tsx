@@ -3,29 +3,27 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2, CheckCircle, Shield } from "lucide-react";
 
-type OTPStep = "email" | "code" | "verifying";
+type Step = "email" | "otp";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
 
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<OTPStep>("email");
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [isTestAccount, setIsTestAccount] = useState(false);
 
-  const handleRequestOTP = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email) return;
+
     setLoading(true);
     setError("");
-    setMessage("");
-    setIsTestAccount(false);
 
     try {
       const res = await fetch("/api/auth/otp/request", {
@@ -40,11 +38,7 @@ export default function LoginForm() {
         throw new Error(data.error || "Failed to send OTP");
       }
 
-      setStep("code");
-      if (data.isTestAccount) {
-        setIsTestAccount(true);
-        setMessage("You are a tester, type anything and proceed");
-      }
+      setStep("otp");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -52,17 +46,18 @@ export default function LoginForm() {
     }
   };
 
-  const handleVerifyOTP = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp || otp.length !== 6) return;
+
     setLoading(true);
-    setStep("verifying");
     setError("");
-    
+
     try {
       const res = await fetch("/api/auth/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ email, code: otp }),
       });
 
       const data = await res.json();
@@ -74,264 +69,241 @@ export default function LoginForm() {
       // Store token in cookie
       document.cookie = `auth_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 
-      // Broadcast login event for cross-app sync
-      const channel = new BroadcastChannel("auth_channel");
-      channel.postMessage({ type: "login", token: data.token });
-      channel.close();
+      // Store in localStorage for cross-tab sync
+      localStorage.setItem("auth_token", data.token);
 
-      // Show success briefly before redirect
-      setMessage("Success! Redirecting...");
-      setTimeout(() => {
-        router.push(redirectTo);
-        router.refresh();
-      }, 800);
+      // Broadcast login event for same-origin tabs
+      try {
+        const channel = new BroadcastChannel("auth_channel");
+        channel.postMessage({ type: "login", token: data.token });
+        channel.close();
+      } catch (e) {
+        // BroadcastChannel not supported, skip
+      }
+
+      // Hard redirect to ensure middleware runs
+      window.location.href = redirectTo;
     } catch (err: any) {
       setError(err.message);
-      setStep("code");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCodeChange = (value: string) => {
-    const sanitized = value.replace(/\D/g, "").slice(0, 6);
-    setCode(sanitized);
-    
-    // Auto-submit when 6 digits entered
-    if (sanitized.length === 6 && !loading) {
-      setTimeout(() => handleVerifyOTP(), 300);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !loading) {
-      if (step === "email") {
-        handleRequestOTP(e);
-      } else if (step === "code" && code.length === 6) {
-        handleVerifyOTP();
-      }
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-alloro-bg font-sans">
-      <div className="max-w-md w-full">
-        {/* Main Card */}
-        <div className="relative p-8 rounded-2xl bg-white border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.08)]">
-          {/* Logo/Brand */}
-          <div className="flex justify-center mb-6">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-alloro-orange to-brand-600 shadow-lg shadow-alloro-orange/20 flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">W</span>
-            </div>
-          </div>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
+      >
+        {/* Logo and Brand */}
+        <motion.div
+          className="mb-8 text-center"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <motion.div
+            className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-alloro-orange to-brand-600 shadow-lg mb-4 flex items-center justify-center"
+            whileHover={{ scale: 1.05 }}
+          >
+            <span className="text-2xl font-bold text-white">W</span>
+          </motion.div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            <span className="text-alloro-orange">Website Builder</span> Admin
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Sign in to access the control panel
+          </p>
+        </motion.div>
 
-          {/* Welcome Message */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-alloro-navy tracking-tight mb-2">
-              Website Builder
-            </h1>
-            <p className="text-slate-500 text-sm">
-              Admin access · Sign in to continue
-            </p>
-          </div>
-
-          {/* Error/Success Messages */}
-          <AnimatePresence mode="wait">
-            {(error || message) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className={`mb-4 p-3 rounded-lg text-center text-sm ${
-                  error
-                    ? "bg-red-50 text-red-700 border border-red-200"
-                    : "bg-green-50 text-green-700 border border-green-200"
-                }`}
-              >
-                {error || message}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Step Indicator */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <div
-              className={`flex items-center gap-2 ${
-                step === "email" ? "text-alloro-orange" : "text-slate-400"
-              }`}
+        {/* Error Message */}
+        <AnimatePresence mode="wait">
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm text-center"
             >
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  step === "email"
-                    ? "bg-alloro-orange text-white"
-                    : "bg-slate-200 text-slate-500"
-                }`}
-              >
-                1
-              </div>
-              <span className="text-xs font-medium hidden sm:inline">Email</span>
-            </div>
-            <div className="w-8 h-px bg-slate-300" />
-            <div
-              className={`flex items-center gap-2 ${
-                step === "code" || step === "verifying"
-                  ? "text-alloro-orange"
-                  : "text-slate-400"
-              }`}
-            >
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  step === "code" || step === "verifying"
-                    ? "bg-alloro-orange text-white"
-                    : "bg-slate-200 text-slate-500"
-                }`}
-              >
-                {step === "verifying" ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  "2"
-                )}
-              </div>
-              <span className="text-xs font-medium hidden sm:inline">Verify</span>
-            </div>
-          </div>
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-          {/* Content */}
+        {/* Card */}
+        <motion.div
+          className="rounded-2xl border border-gray-100 bg-white p-8 shadow-xl"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+        >
           <AnimatePresence mode="wait">
             {step === "email" ? (
               <motion.form
-                key="email-step"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                onSubmit={handleRequestOTP}
-                className="space-y-4"
+                key="email-form"
+                onSubmit={handleSendOtp}
+                className="space-y-5"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3 }}
               >
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="block text-sm font-medium text-alloro-navy mb-2"
+                <div className="text-center mb-6">
+                  <motion.div
+                    className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-alloro-orange/20 to-alloro-orange/10"
+                    animate={loading ? { scale: [1, 1.05, 1] } : {}}
+                    transition={loading ? { duration: 1, repeat: Infinity } : {}}
                   >
-                    Admin Email
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="admin@example.com"
-                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-alloro-orange/20 focus:border-alloro-orange outline-none transition-all placeholder:text-slate-400"
-                    disabled={loading}
-                    autoFocus
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)}
-                  className="w-full py-3 px-4 bg-alloro-orange hover:bg-brand-600 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-alloro-orange/20"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Sending code...
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="w-4 h-4" />
-                      Send Verification Code
-                    </>
-                  )}
-                </button>
-              </motion.form>
-            ) : (
-              <motion.form
-                key="code-step"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                onSubmit={handleVerifyOTP}
-                className="space-y-4"
-              >
-                <div className="text-center mb-4">
-                  {isTestAccount ? (
-                    <p className="text-sm text-green-600 font-semibold">
-                      You are a tester, type anything and proceed
-                    </p>
-                  ) : (
-                    <>
-                      <p className="text-sm text-slate-600 font-medium">Code sent to</p>
-                      <p className="text-sm text-alloro-orange font-semibold">{email}</p>
-                    </>
-                  )}
+                    <Lock className="h-7 w-7 text-alloro-orange" />
+                  </motion.div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Enter your email
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    We'll send you a verification code
+                  </p>
                 </div>
 
                 <div>
                   <label
-                    htmlFor="code"
-                    className="block text-sm font-medium text-alloro-navy mb-2"
+                    htmlFor="email"
+                    className="mb-2 block text-sm font-medium text-gray-700"
+                  >
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                      <Mail className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      type="email"
+                      id="email"
+                      className="block w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-gray-900 placeholder-gray-400 transition-all focus:border-alloro-orange focus:ring-2 focus:ring-alloro-orange/20 focus:outline-none"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <motion.button
+                  type="submit"
+                  disabled={loading}
+                  className="flex w-full items-center justify-center rounded-xl bg-alloro-orange px-5 py-3 text-base font-semibold text-white shadow-lg shadow-alloro-orange/30 transition-all hover:bg-alloro-orange/90 hover:shadow-xl hover:shadow-alloro-orange/40 focus:outline-none focus:ring-4 focus:ring-alloro-orange/20 disabled:opacity-50"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </motion.button>
+              </motion.form>
+            ) : (
+              <motion.form
+                key="otp-form"
+                onSubmit={handleVerifyOtp}
+                className="space-y-5"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="text-center mb-6">
+                  <motion.div
+                    className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-green-100 to-green-50"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 300 }}
+                  >
+                    <CheckCircle className="h-7 w-7 text-green-500" />
+                  </motion.div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Check your email
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    We sent a code to{" "}
+                    <span className="font-medium text-gray-700">{email}</span>
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="otp"
+                    className="mb-2 block text-sm font-medium text-gray-700"
                   >
                     Verification Code
                   </label>
                   <input
-                    id="code"
                     type="text"
+                    id="otp"
                     inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={code}
-                    onChange={(e) => handleCodeChange(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="000000"
+                    className="block w-full rounded-xl border border-gray-200 bg-white py-4 text-center text-2xl font-bold tracking-[0.5em] text-gray-900 placeholder-gray-300 transition-all focus:border-alloro-orange focus:ring-2 focus:ring-alloro-orange/20 focus:outline-none"
+                    placeholder="------"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     maxLength={6}
-                    className="w-full px-4 py-4 bg-white border-2 border-slate-300 rounded-xl focus:ring-2 focus:ring-alloro-orange/20 focus:border-alloro-orange outline-none transition-all text-center tracking-[0.5em] font-mono text-2xl font-bold placeholder:tracking-normal placeholder:text-base text-alloro-navy"
-                    disabled={loading}
+                    required
                     autoFocus
                   />
                 </div>
 
-                <button
+                <motion.button
                   type="submit"
-                  disabled={loading || code.length !== 6}
-                  className="w-full py-3 px-4 bg-alloro-orange hover:bg-brand-600 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-alloro-orange/20"
+                  disabled={loading || otp.length < 6}
+                  className="flex w-full items-center justify-center rounded-xl bg-alloro-orange px-5 py-3 text-base font-semibold text-white shadow-lg shadow-alloro-orange/30 transition-all hover:bg-alloro-orange/90 hover:shadow-xl hover:shadow-alloro-orange/40 focus:outline-none focus:ring-4 focus:ring-alloro-orange/20 disabled:opacity-50"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  {step === "verifying" ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Verifying...
-                    </>
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
                     <>
-                      <CheckCircle2 className="w-4 h-4" />
+                      <Shield className="mr-2 h-5 w-5" />
                       Verify & Sign In
                     </>
                   )}
-                </button>
+                </motion.button>
 
-                <button
+                <motion.button
                   type="button"
                   onClick={() => {
                     setStep("email");
-                    setCode("");
+                    setOtp("");
                     setError("");
-                    setMessage("");
                   }}
-                  disabled={loading}
-                  className="w-full text-sm text-slate-500 hover:text-alloro-orange transition-colors disabled:opacity-50"
+                  className="w-full text-center text-sm font-medium text-gray-500 hover:text-alloro-orange transition-colors"
+                  whileHover={{ x: -4 }}
                 >
-                  Use a different email
-                </button>
+                  ← Use a different email
+                </motion.button>
               </motion.form>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
 
-        {/* Help Text */}
-        <div className="text-center mt-6">
-          <p className="text-slate-500 text-sm">
-            Protected admin area · Authorized access only
+        {/* Footer */}
+        <motion.div
+          className="mt-6 text-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          <p className="text-xs text-gray-400 flex items-center justify-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            Protected by Alloro Security
           </p>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
