@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@theme inline {
+@theme {
   /* Brand Colors - Alloro Orange */
   --color-brand-50: #fdf3f1;
   --color-brand-100: #fae4df;

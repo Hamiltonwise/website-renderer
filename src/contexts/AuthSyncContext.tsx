@@ -22,13 +22,17 @@ export function AuthSyncProvider({ children }: { children: React.ReactNode }) {
       channel.onmessage = (event) => {
         const { type, token } = event.data;
 
+        // Use shared domain in production for cross-app auth sync
+        const isProduction = window.location.hostname.includes('getalloro.com');
+        const domain = isProduction ? '; domain=.getalloro.com' : '';
+
         if (type === "login" && token) {
           // Another tab logged in - update our token
-          document.cookie = `auth_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          document.cookie = `auth_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${domain}`;
           window.location.reload(); // Hard reload to ensure middleware runs
         } else if (type === "logout") {
           // Another tab logged out - clear our token and redirect
-          document.cookie = "auth_token=; path=/; max-age=0";
+          document.cookie = `auth_token=; path=/; max-age=0${domain}`;
           window.location.href = "/login";
         }
       };
@@ -39,13 +43,16 @@ export function AuthSyncProvider({ children }: { children: React.ReactNode }) {
     // Storage event for cross-tab sync (alternative approach)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "auth_token") {
+        const isProduction = window.location.hostname.includes('getalloro.com');
+        const domain = isProduction ? '; domain=.getalloro.com' : '';
+
         if (e.newValue) {
           // Token added/updated
-          document.cookie = `auth_token=${e.newValue}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          document.cookie = `auth_token=${e.newValue}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${domain}`;
           window.location.reload();
         } else {
           // Token removed
-          document.cookie = "auth_token=; path=/; max-age=0";
+          document.cookie = `auth_token=; path=/; max-age=0${domain}`;
           window.location.href = "/login";
         }
       }
@@ -62,9 +69,13 @@ export function AuthSyncProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const logout = () => {
+    // Use shared domain in production for cross-app auth sync
+    const isProduction = window.location.hostname.includes('getalloro.com');
+    const domain = isProduction ? '; domain=.getalloro.com' : '';
+
     // Clear token from cookie
-    document.cookie = "auth_token=; path=/; max-age=0";
-    
+    document.cookie = `auth_token=; path=/; max-age=0${domain}`;
+
     // Clear from localStorage (for storage event)
     localStorage.removeItem("auth_token");
 

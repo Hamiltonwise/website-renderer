@@ -85,12 +85,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Set cookie server-side to ensure it's available for middleware on redirect
+    // Use shared domain in production for cross-app auth sync
     response.cookies.set("auth_token", token, {
       path: "/",
       maxAge: 7 * 24 * 60 * 60, // 7 days
       httpOnly: false, // Allow client-side access for cross-tab sync
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
+      domain: process.env.NODE_ENV === "production" ? ".getalloro.com" : undefined,
     });
 
     return response;

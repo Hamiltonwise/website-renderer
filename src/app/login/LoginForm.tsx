@@ -67,7 +67,10 @@ export default function LoginForm() {
       }
 
       // Cookie is now set server-side, but also set client-side for redundancy
-      document.cookie = `auth_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+      // Use shared domain in production for cross-app auth sync
+      const isProduction = window.location.hostname.includes('getalloro.com');
+      const domain = isProduction ? '; domain=.getalloro.com' : '';
+      document.cookie = `auth_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${domain}`;
 
       // Store in localStorage for cross-tab sync
       localStorage.setItem("auth_token", data.token);

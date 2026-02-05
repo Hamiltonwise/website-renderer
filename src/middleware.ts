@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/auth/jwt';
 
+// Use Node.js runtime for jsonwebtoken compatibility
+export const runtime = 'nodejs';
+
 // Auth API base URL (signalsai-backend) - for future cross-app sync
 const AUTH_API_URL = process.env.AUTH_API_URL || 'http://localhost:3000';
 
