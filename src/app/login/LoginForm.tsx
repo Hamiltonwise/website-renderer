@@ -66,7 +66,7 @@ export default function LoginForm() {
         throw new Error(data.error || "Invalid code");
       }
 
-      // Store token in cookie
+      // Cookie is now set server-side, but also set client-side for redundancy
       document.cookie = `auth_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 
       // Store in localStorage for cross-tab sync
@@ -80,6 +80,9 @@ export default function LoginForm() {
       } catch (e) {
         // BroadcastChannel not supported, skip
       }
+
+      // Small delay to ensure cookie is set before redirect
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Hard redirect to ensure middleware runs
       window.location.href = redirectTo;

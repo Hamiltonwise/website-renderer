@@ -74,7 +74,8 @@ export async function POST(req: NextRequest) {
       email: normalizedEmail,
     });
 
-    return NextResponse.json({
+    // Create response with token
+    const response = NextResponse.json({
       success: true,
       token,
       user: {
@@ -82,6 +83,17 @@ export async function POST(req: NextRequest) {
         role: "admin",
       },
     });
+
+    // Set cookie server-side to ensure it's available for middleware on redirect
+    response.cookies.set("auth_token", token, {
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      httpOnly: false, // Allow client-side access for cross-tab sync
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    return response;
   } catch (error) {
     console.error("OTP Verify Error:", error);
     return NextResponse.json(
