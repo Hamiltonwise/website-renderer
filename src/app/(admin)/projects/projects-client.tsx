@@ -11,7 +11,7 @@ import {
   Loader2,
   ExternalLink,
 } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Project, ProjectStatus } from '@/types';
 import { CreateProjectButton } from './create-project-button';
@@ -91,6 +91,7 @@ interface ProjectsClientProps {
 }
 
 export function ProjectsClient({ projects }: ProjectsClientProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredProjects = projects.filter(
@@ -168,6 +169,8 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
               const status = STATUS_CONFIG[project.status];
               const StatusIcon = status.icon;
 
+              const isReady = project.status === 'READY';
+
               return (
                 <motion.div
                   key={project.id}
@@ -176,7 +179,12 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
                   animate="visible"
                   variants={cardVariants}
                   whileHover={{ y: -5, transition: { duration: 0.2 } }}
-                  className="bg-white rounded-2xl border border-gray-100 shadow-lg hover:shadow-xl hover:border-brand-100 transition-all overflow-hidden"
+                  onClick={() => router.push(`/projects/${project.id}`)}
+                  className={`rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden cursor-pointer flex flex-col ${
+                    isReady
+                      ? 'bg-gradient-to-br from-white via-white to-green-50 border border-gray-100 hover:border-brand-100'
+                      : 'bg-gradient-to-br from-white via-white to-orange-50 border border-gray-100 hover:border-brand-100'
+                  }`}
                 >
                   {/* Card Header */}
                   <div className="p-6 pb-4">
@@ -184,7 +192,10 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/30">
                         <Globe className="w-5 h-5 text-white" />
                       </div>
-                      <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
                         <MoreVertical className="w-5 h-5 text-gray-400" />
                       </button>
                     </div>
@@ -196,19 +207,21 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
                     </p>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="px-6 pb-4">
-                    <div className="flex justify-between text-xs text-gray-500 mb-2">
-                      <span>{status.label}</span>
-                      <span>{status.progress}%</span>
+                  {/* Progress Bar - hidden when ready */}
+                  {!isReady && (
+                    <div className="px-6 pb-4">
+                      <div className="flex justify-between text-xs text-gray-500 mb-2">
+                        <span>{status.label}</span>
+                        <span>{status.progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-brand-500 transition-all duration-500"
+                          style={{ width: `${status.progress}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-brand-500 transition-all duration-500"
-                        style={{ width: `${status.progress}%` }}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Status Badge */}
                   <div className="px-6 pb-4">
@@ -225,22 +238,20 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
                   </div>
 
                   {/* Card Footer */}
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="text-brand-600 hover:text-brand-700 font-medium text-sm transition-colors"
-                    >
+                  <div className="mt-auto px-6 py-4 bg-white/60 backdrop-blur-sm border-t border-gray-100/50 flex items-center justify-between">
+                    <span className="text-brand-600 font-medium text-sm">
                       View Details
-                    </Link>
-                    {project.status === 'READY' && (
+                    </span>
+                    {isReady && (
                       <a
                         href={getSiteUrl(project.generated_hostname)}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                       >
                         <ExternalLink className="w-4 h-4" />
-                        Visit
+                        {project.generated_hostname}
                       </a>
                     )}
                   </div>
