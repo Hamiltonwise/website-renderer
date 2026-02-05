@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import { AuthSyncProvider } from "@/contexts/AuthSyncContext";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
@@ -23,7 +24,7 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.variable} font-sans antialiased bg-slate-50 min-h-screen`}
       >
-        {children}
+        <AuthSyncProvider>{children}</AuthSyncProvider>
       </body>
     </html>
   );
