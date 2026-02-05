@@ -188,7 +188,10 @@ export function ProjectsClient({ projects }: ProjectsClientProps) {
                 >
                   {/* Card Header */}
                   <div className="p-6 pb-4">
-                    <div className="flex items-start justify-end mb-4">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/30">
+                        <Globe className="w-5 h-5 text-white" />
+                      </div>
                       <button
                         onClick={(e) => e.stopPropagation()}
                         className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
