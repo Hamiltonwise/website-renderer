@@ -13,6 +13,14 @@
   --color-brand-800: #843325;
   --color-brand-900: #6d2e23;
 
+  /* Alloro Design System Colors */
+  --color-alloro-navy: #11151C;
+  --color-alloro-deepBlue: #212D40;
+  --color-alloro-slateBlue: #364156;
+  --color-alloro-orange: #D66853;
+  --color-alloro-bg: #F3F4F6;
+  --color-alloro-surface: #FFFFFF;
+
   /* Font */
   --font-sans: "Plus Jakarta Sans", sans-serif;
 }
