@@ -4,13 +4,23 @@ import { getPageToRender } from '../services/page.service';
 import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
-import type { Project } from '../types';
+import { renderPage, normalizeSections } from '../utils/renderer';
+import type { Project, Page } from '../types';
 
 function getBusinessName(project: Project): string | undefined {
   if (project.step_gbp_scrape && typeof project.step_gbp_scrape === 'object') {
     return (project.step_gbp_scrape as { name?: string }).name;
   }
   return undefined;
+}
+
+function assembleHtml(project: Project, page: Page): string {
+  return renderPage(
+    project.wrapper || '{{slot}}',
+    project.header || '',
+    project.footer || '',
+    normalizeSections(page.sections)
+  );
 }
 
 export async function siteRoute(req: Request, res: Response): Promise<void> {
@@ -39,8 +49,8 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
     // Try the home page as fallback for non-root paths
     if (pagePath !== '/') {
       const homePage = await getPageToRender(project.id, '/');
-      if (homePage?.html_content?.html) {
-        res.type('html').send(homePage.html_content.html);
+      if (homePage) {
+        res.type('html').send(assembleHtml(project, homePage));
         return;
       }
     }
@@ -49,6 +59,5 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const htmlToRender = page.html_content?.html || '';
-  res.type('html').send(htmlToRender);
+  res.type('html').send(assembleHtml(project, page));
 }

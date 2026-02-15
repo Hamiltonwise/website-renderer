@@ -11,6 +11,12 @@ export type ProjectStatus =
 // Page status enum
 export type PageStatus = 'draft' | 'published' | 'inactive';
 
+// Section structure (JSONB array items)
+export interface Section {
+  name: string;
+  content: string;
+}
+
 // Project model
 export interface Project {
   id: string;
@@ -19,16 +25,14 @@ export interface Project {
   status: ProjectStatus;
   selected_place_id: string | null;
   selected_website_url: string | null;
+  wrapper: string;
+  header: string;
+  footer: string;
   step_gbp_scrape: Record<string, unknown> | null;
   step_website_scrape: Record<string, unknown> | null;
   step_image_analysis: Array<{ s3Url: string; description: string }> | null;
   created_at: Date;
   updated_at: Date;
-}
-
-// Page content structure (JSONB)
-export interface PageContent {
-  html: string;
 }
 
 // Page model
@@ -38,7 +42,7 @@ export interface Page {
   path: string;
   version: number;
   status: PageStatus;
-  html_content: PageContent;
+  sections: Section[];
   created_at: Date;
   updated_at: Date;
 }

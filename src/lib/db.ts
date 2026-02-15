@@ -26,7 +26,7 @@ function buildConfig(): Knex.Config {
     production: {
       ...shared,
       pool: {
-        min: 2,
+        min: 0,
         max: 50,
         acquireTimeoutMillis: 90000,
         createTimeoutMillis: 30000,
@@ -42,7 +42,7 @@ function buildConfig(): Knex.Config {
     development: {
       ...shared,
       pool: {
-        min: 2,
+        min: 0,
         max: 10,
         acquireTimeoutMillis: 60000,
         createTimeoutMillis: 10000,
