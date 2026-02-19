@@ -6,6 +6,7 @@ import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
 import { renderPage, normalizeSections } from '../utils/renderer';
 import type { Project, Page } from '../types';
+import { getDb } from '../lib/db';
 
 function getBusinessName(project: Project): string | undefined {
   if (project.step_gbp_scrape && typeof project.step_gbp_scrape === 'object') {
@@ -14,12 +15,52 @@ function getBusinessName(project: Project): string | undefined {
   return undefined;
 }
 
-function assembleHtml(project: Project, page: Page): string {
+/**
+ * Merge code snippets: project snippets override template snippets by name+location
+ */
+function mergeCodeSnippets(templateSnippets: any[], projectSnippets: any[]): any[] {
+  const result = [...templateSnippets];
+
+  for (const projectSnippet of projectSnippets) {
+    const existingIndex = result.findIndex(
+      (s) => s.name === projectSnippet.name && s.location === projectSnippet.location
+    );
+
+    if (existingIndex >= 0) {
+      result[existingIndex] = projectSnippet; // Override
+    } else {
+      result.push(projectSnippet); // Append
+    }
+  }
+
+  return result;
+}
+
+async function assembleHtml(project: Project, page: Page): Promise<string> {
+  const db = getDb();
+
+  // Fetch template snippets (if project has template)
+  const templateSnippets = project.template_id
+    ? await db('header_footer_code')
+        .where({ template_id: project.template_id, is_enabled: true })
+        .orderBy('order_index', 'asc')
+    : [];
+
+  // Fetch project snippets
+  const projectSnippets = await db('header_footer_code')
+    .where({ project_id: project.id, is_enabled: true })
+    .orderBy('order_index', 'asc');
+
+  // Merge: project overrides template by name+location
+  const mergedSnippets = mergeCodeSnippets(templateSnippets, projectSnippets);
+
   return renderPage(
     project.wrapper || '{{slot}}',
     project.header || '',
     project.footer || '',
-    normalizeSections(page.sections)
+    normalizeSections(page.sections),
+    mergedSnippets,
+    page.id
   );
 }
 
@@ -50,7 +91,8 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
     if (pagePath !== '/') {
       const homePage = await getPageToRender(project.id, '/');
       if (homePage) {
-        res.type('html').send(assembleHtml(project, homePage));
+        const html = await assembleHtml(project, homePage);
+        res.type('html').send(html);
         return;
       }
     }
@@ -59,5 +101,6 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  res.type('html').send(assembleHtml(project, page));
+  const html = await assembleHtml(project, page);
+  res.type('html').send(html);
 }
