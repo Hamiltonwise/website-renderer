@@ -31,6 +31,7 @@ export interface Project {
   step_gbp_scrape: Record<string, unknown> | null;
   step_website_scrape: Record<string, unknown> | null;
   step_image_analysis: Array<{ s3Url: string; description: string }> | null;
+  template_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
