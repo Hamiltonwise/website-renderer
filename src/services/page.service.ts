@@ -40,3 +40,12 @@ export async function getPageToRender(
 
   return getDraftPage(projectId, path);
 }
+
+export async function hasPublishedPages(projectId: string): Promise<boolean> {
+  const row = await getDb()('pages')
+    .where({ project_id: projectId, status: 'published' })
+    .select(getDb().raw('1'))
+    .first();
+
+  return !!row;
+}

@@ -78,6 +78,31 @@ function injectCodeSnippets(
 }
 
 /**
+ * Check if an HTML string's root element has data-alloro-hidden="true".
+ */
+function isHiddenElement(html: string): boolean {
+  const openTagMatch = html.match(/^[\s]*<[^>]+>/);
+  if (!openTagMatch) return false;
+  return /data-alloro-hidden\s*=\s*["']true["']/.test(openTagMatch[0]);
+}
+
+/**
+ * Remove any nested elements that have data-alloro-hidden="true" from an HTML string.
+ * Uses a non-greedy regex that matches the opening tag through the corresponding
+ * closing tag. Works reliably for alloro-tpl component wrappers which don't
+ * nest other alloro-tpl elements inside them.
+ */
+function stripHiddenElements(html: string): string {
+  // Match elements whose opening tag contains data-alloro-hidden="true".
+  // Pattern: <tagname ...data-alloro-hidden="true"...>...content...</tagname>
+  // We capture the tag name so we can match its closing tag.
+  return html.replace(
+    /<(\w+)\b[^>]*\bdata-alloro-hidden\s*=\s*["']true["'][^>]*>[\s\S]*?<\/\1>/g,
+    ''
+  );
+}
+
+/**
  * Assemble a full HTML page from project wrapper/header/footer and page sections.
  *
  * wrapper.replace('{{slot}}', header + sections + footer)
@@ -93,8 +118,17 @@ export function renderPage(
   codeSnippets?: any[],
   currentPageId?: string
 ): string {
-  const mainContent = sections.map((s) => s.content).join('\n');
-  const pageContent = [header, mainContent, footer].join('\n');
+  const visibleSections = sections.filter(
+    (s) => !isHiddenElement(s.content)
+  );
+  const mainContent = visibleSections
+    .map((s) => stripHiddenElements(s.content))
+    .join('\n');
+  const pageContent = [
+    stripHiddenElements(header),
+    mainContent,
+    stripHiddenElements(footer),
+  ].join('\n');
 
   if (!wrapper.includes('{{slot}}')) {
     return [

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { getProjectByHostname } from '../services/project.service';
-import { getPageToRender } from '../services/page.service';
+import { getPageToRender, hasPublishedPages } from '../services/page.service';
 import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
@@ -77,10 +77,15 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
 
   const businessName = getBusinessName(project);
 
-  // Check if project is ready
+  // Check if project is ready.
+  // If the project is in an intermediate pipeline state (e.g. generating a new page)
+  // but already has published pages, skip the gate and render normally.
   if (project.status !== 'HTML_GENERATED' && project.status !== 'READY') {
-    res.type('html').send(siteNotReadyPage(project.status, businessName));
-    return;
+    const hasPages = await hasPublishedPages(project.id);
+    if (!hasPages) {
+      res.type('html').send(siteNotReadyPage(project.status, businessName));
+      return;
+    }
   }
 
   // Get the page content
