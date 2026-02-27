@@ -4,6 +4,7 @@ dotenv.config();
 import 'express-async-errors';
 import express, { Request, Response, NextFunction } from 'express';
 import { siteRoute } from './routes/site';
+import { verifyDomainRoute } from './routes/verify-domain';
 import { extractSubdomain } from './middleware/subdomain';
 import { getDb } from './lib/db';
 import { wrapInLayout } from './templates/layout';
@@ -13,6 +14,9 @@ const PORT = process.env.PORT || 7777;
 
 // Ignore favicon requests
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
+
+// Caddy on-demand TLS validation (must be before subdomain middleware)
+app.get('/verify-domain', verifyDomainRoute);
 
 // Extract subdomain, then render site
 app.use(extractSubdomain);
