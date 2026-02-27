@@ -36,6 +36,8 @@ function mergeCodeSnippets(templateSnippets: any[], projectSnippets: any[]): any
   return result;
 }
 
+const API_BASE_URL = process.env.API_BASE_URL || 'https://app.getalloro.com';
+
 async function assembleHtml(project: Project, page: Page): Promise<string> {
   const db = getDb();
 
@@ -60,7 +62,9 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
     project.footer || '',
     normalizeSections(page.sections),
     mergedSnippets,
-    page.id
+    page.id,
+    project.id,
+    API_BASE_URL
   );
 }
 

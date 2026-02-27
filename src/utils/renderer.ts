@@ -1,6 +1,72 @@
 import type { Section } from '../types';
 
 /**
+ * Generates an inline <script> that auto-intercepts all forms on the page
+ * and POSTs their contents to the Alloro form-submission API.
+ * Forms with `data-alloro-ignore` are skipped.
+ */
+function buildFormScript(projectId: string, apiBase: string): string {
+  return `<script data-alloro-form-handler>
+(function(){
+  'use strict';
+  document.addEventListener('DOMContentLoaded',function(){
+    var API='${apiBase}';
+    var PID='${projectId}';
+    var forms=document.querySelectorAll('form:not([data-alloro-ignore])');
+    forms.forEach(function(form){
+      form.addEventListener('submit',function(e){
+        e.preventDefault();
+        var formName=form.getAttribute('data-form-name')||form.getAttribute('name')||'Contact Form';
+        var contents={};
+        var inputs=form.querySelectorAll('input,select,textarea');
+        inputs.forEach(function(el){
+          if(el.tabIndex===-1||el.type==='submit'||el.type==='hidden'||el.type==='button')return;
+          var label=el.getAttribute('data-label')||el.getAttribute('name')||el.getAttribute('placeholder')||'';
+          if(!label)return;
+          if(el.type==='checkbox'){
+            if(el.checked){
+              contents[label]=contents[label]?contents[label]+', '+el.value:el.value;
+            }
+          }else if(el.type==='radio'){
+            if(el.checked){
+              contents[label]=el.value;
+            }
+          }else if(el.tagName==='SELECT'){
+            var opt=el.options[el.selectedIndex];
+            if(opt&&opt.value){
+              contents[label]=opt.textContent.trim();
+            }
+          }else{
+            var v=el.value.trim();
+            if(v)contents[label]=v;
+          }
+        });
+        var btn=form.querySelector('button[type="submit"],input[type="submit"]');
+        var origText=btn?btn.textContent:'';
+        if(btn){btn.disabled=true;btn.textContent='Sending...';}
+        fetch(API+'/api/websites/form-submission',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({projectId:PID,formName:formName,contents:contents})
+        })
+        .then(function(r){if(!r.ok)throw new Error('fail');return r.json();})
+        .then(function(){
+          if(btn){btn.textContent='Sent!';btn.style.backgroundColor='#16a34a';}
+          form.reset();
+          setTimeout(function(){if(btn){btn.disabled=false;btn.textContent=origText;btn.style.backgroundColor='';}},3000);
+        })
+        .catch(function(){
+          if(btn){btn.textContent='Error \\u2014 Try Again';btn.style.backgroundColor='#dc2626';}
+          setTimeout(function(){if(btn){btn.disabled=false;btn.textContent=origText;btn.style.backgroundColor='';}},3000);
+        });
+      });
+    });
+  });
+})();
+</script>`;
+}
+
+/**
  * Unwrap sections whether stored as Section[] or { sections: Section[] }.
  * N8N writes directly to the DB with the wrapped format; our API writes the bare array.
  */
@@ -116,7 +182,9 @@ export function renderPage(
   footer: string,
   sections: Section[],
   codeSnippets?: any[],
-  currentPageId?: string
+  currentPageId?: string,
+  projectId?: string,
+  apiBaseUrl?: string
 ): string {
   const visibleSections = sections.filter(
     (s) => !isHiddenElement(s.content)
@@ -145,6 +213,12 @@ export function renderPage(
   // Inject code snippets
   if (codeSnippets && codeSnippets.length > 0) {
     finalHtml = injectCodeSnippets(finalHtml, codeSnippets, currentPageId);
+  }
+
+  // Inject default form submission handler on all pages
+  if (projectId && apiBaseUrl) {
+    const formScript = buildFormScript(projectId, apiBaseUrl);
+    finalHtml = finalHtml.replace(/<\/body>/i, `${formScript}\n</body>`);
   }
 
   return finalHtml;
