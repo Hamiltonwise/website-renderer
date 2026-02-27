@@ -13,7 +13,9 @@ export async function getProjectByHostname(hostname: string): Promise<Project | 
 
 export async function getProjectByCustomDomain(domain: string): Promise<Project | null> {
   const project = await getDb()('projects')
-    .where({ custom_domain: domain })
+    .where(function () {
+      this.where('custom_domain', domain).orWhere('custom_domain_alt', domain);
+    })
     .whereNotNull('domain_verified_at')
     .first();
   return project || null;
