@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getProjectByHostname } from '../services/project.service';
+import { getProjectByHostname, getProjectByCustomDomain } from '../services/project.service';
 import { getPageToRender, hasPublishedPages } from '../services/page.service';
 import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
@@ -65,13 +65,18 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
 }
 
 export async function siteRoute(req: Request, res: Response): Promise<void> {
-  const hostname = res.locals.hostname as string;
+  const hostname = res.locals.hostname as string | undefined;
+  const customDomain = res.locals.customDomain as string | undefined;
   const pagePath = req.path === '/' ? '/' : req.path;
 
-  const project = await getProjectByHostname(hostname);
+  const project = hostname
+    ? await getProjectByHostname(hostname)
+    : customDomain
+      ? await getProjectByCustomDomain(customDomain)
+      : null;
 
   if (!project) {
-    res.status(404).type('html').send(siteNotFoundPage(hostname));
+    res.status(404).type('html').send(siteNotFoundPage(hostname || customDomain || 'unknown'));
     return;
   }
 
