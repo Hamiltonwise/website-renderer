@@ -4,16 +4,26 @@ import type { Section } from '../types';
  * Generates an inline <script> that auto-intercepts all forms on the page
  * and POSTs their contents to the Alloro form-submission API.
  * Forms with `data-alloro-ignore` are skipped.
+ *
+ * Security layers injected:
+ * - Honeypot hidden field (_hp) — bots fill it, humans don't
+ * - Timestamp (_ts) — recorded at page load, validated server-side
  */
 function buildFormScript(projectId: string, apiBase: string): string {
   return `<script data-alloro-form-handler>
 (function(){
   'use strict';
+  var _ts=Date.now();
   document.addEventListener('DOMContentLoaded',function(){
     var API='${apiBase}';
     var PID='${projectId}';
     var forms=document.querySelectorAll('form:not([data-alloro-ignore])');
     forms.forEach(function(form){
+      var hp=document.createElement('input');
+      hp.type='text';hp.name='website_url';hp.tabIndex=-1;hp.autocomplete='off';
+      hp.setAttribute('aria-hidden','true');
+      hp.style.cssText='position:absolute;left:-9999px;opacity:0;height:0;width:0;overflow:hidden;';
+      form.appendChild(hp);
       form.addEventListener('submit',function(e){
         e.preventDefault();
         var formName=form.getAttribute('data-form-name')||form.getAttribute('name')||'Contact Form';
@@ -47,7 +57,7 @@ function buildFormScript(projectId: string, apiBase: string): string {
         fetch(API+'/api/websites/form-submission',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({projectId:PID,formName:formName,contents:contents})
+          body:JSON.stringify({projectId:PID,formName:formName,contents:contents,_hp:hp.value,_ts:_ts})
         })
         .then(function(r){if(!r.ok)throw new Error('fail');return r.json();})
         .then(function(){
