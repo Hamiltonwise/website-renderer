@@ -24,6 +24,24 @@ function buildFormScript(projectId: string, apiBase: string): string {
       hp.setAttribute('aria-hidden','true');
       hp.style.cssText='position:absolute;left:-9999px;opacity:0;height:0;width:0;overflow:hidden;';
       form.appendChild(hp);
+      var badge=document.createElement('a');
+      badge.href='https://getalloro.com/alloro-protect';
+      badge.target='_blank';badge.rel='noopener noreferrer';
+      badge.style.cssText='display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;text-decoration:none;opacity:0.45;transition:opacity 0.2s;';
+      badge.onmouseenter=function(){badge.style.opacity='0.7';};
+      badge.onmouseleave=function(){badge.style.opacity='0.45';};
+      var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('width','12');svg.setAttribute('height','12');svg.setAttribute('viewBox','0 0 32 32');svg.setAttribute('fill','none');
+      var circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx','16');circle.setAttribute('cy','16');circle.setAttribute('r','15');circle.setAttribute('stroke','#999');circle.setAttribute('stroke-width','2');
+      var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M16 7l7 4v6c0 5.25-3 10.5-7 12-4-1.5-7-6.75-7-12v-6l7-4z');path.setAttribute('fill','#999');
+      svg.appendChild(circle);svg.appendChild(path);
+      var label=document.createElement('span');
+      label.textContent='Protected by Alloro';
+      label.style.cssText='font-size:11px;color:#999;font-family:system-ui,sans-serif;';
+      badge.appendChild(svg);badge.appendChild(label);
+      form.parentNode.insertBefore(badge,form.nextSibling);
       form.addEventListener('submit',function(e){
         e.preventDefault();
         var formName=form.getAttribute('data-form-name')||form.getAttribute('name')||'Contact Form';
