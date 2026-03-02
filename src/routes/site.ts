@@ -4,6 +4,7 @@ import { getPageToRender, hasPublishedPages } from '../services/page.service';
 import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
+import { successPage } from '../templates/success-page';
 import { renderPage, normalizeSections } from '../utils/renderer';
 import type { Project, Page } from '../types';
 import { getDb } from '../lib/db';
@@ -36,7 +37,9 @@ function mergeCodeSnippets(templateSnippets: any[], projectSnippets: any[]): any
   return result;
 }
 
-const API_BASE_URL = process.env.API_BASE_URL || 'https://app.getalloro.com';
+function getApiBaseUrl(): string {
+  return process.env.API_BASE_URL || 'https://app.getalloro.com';
+}
 
 async function assembleHtml(project: Project, page: Page): Promise<string> {
   const db = getDb();
@@ -64,7 +67,7 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
     mergedSnippets,
     page.id,
     project.id,
-    API_BASE_URL
+    getApiBaseUrl()
   );
 }
 
@@ -101,6 +104,12 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   const page = await getPageToRender(project.id, pagePath);
 
   if (!page) {
+    // Serve fallback success page if no DB page exists for /success
+    if (pagePath === '/success') {
+      res.type('html').send(successPage(businessName));
+      return;
+    }
+
     // Try the home page as fallback for non-root paths
     if (pagePath !== '/') {
       const homePage = await getPageToRender(project.id, '/');
