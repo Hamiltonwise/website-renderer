@@ -28,18 +28,18 @@ function buildFormScript(projectId: string, apiBase: string): string {
       var badge=document.createElement('a');
       badge.href='https://getalloro.com/alloro-protect';
       badge.target='_blank';badge.rel='noopener noreferrer';
-      badge.style.cssText='display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;text-decoration:none;transition:all 0.2s ease;';
-      var dColor='rgba(0,0,0,0.25)';var hColor='#D66853';
-      badge.onmouseenter=function(){lbl.style.color=hColor;lbl.style.textShadow='0 1px 2px rgba(214,104,83,0.2)';svg.querySelector('path').setAttribute('fill',hColor);};
-      badge.onmouseleave=function(){lbl.style.color=dColor;lbl.style.textShadow='0 1px 1px rgba(0,0,0,0.1)';svg.querySelector('path').setAttribute('fill',dColor);};
+      badge.style.cssText='display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;text-decoration:none;';
+      var dColor='rgba(0,0,0,0.25)';var hColor='rgba(214,104,83,0.65)';
+      badge.onmouseenter=function(){lbl.style.color=hColor;lbl.style.textShadow='0 1px 2px rgba(214,104,83,0.2)';path.style.fill=hColor;};
+      badge.onmouseleave=function(){lbl.style.color=dColor;lbl.style.textShadow='0 1px 1px rgba(0,0,0,0.1)';path.style.fill=dColor;};
       var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
       svg.setAttribute('width','12');svg.setAttribute('height','12');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
       var path=document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d','M12 2l7 4v5c0 5.25-3.5 10-7 12-3.5-2-7-6.75-7-12V6l7-4z');path.setAttribute('fill',dColor);
+      path.setAttribute('d','M12 2l7 4v5c0 5.25-3.5 10-7 12-3.5-2-7-6.75-7-12V6l7-4z');path.style.fill=dColor;path.style.transition='fill 0.2s ease';
       svg.appendChild(path);
       var lbl=document.createElement('span');
-      lbl.textContent='Powered by Alloro\\u2122';
-      lbl.style.cssText='font-size:11px;color:'+dColor+';font-family:system-ui,sans-serif;text-shadow:0 1px 1px rgba(0,0,0,0.1);';
+      lbl.textContent='Powered by Alloro Protect\\u2122';
+      lbl.style.cssText='font-size:11px;color:'+dColor+';font-family:system-ui,sans-serif;text-shadow:0 1px 1px rgba(0,0,0,0.1);transition:color 0.2s ease,text-shadow 0.2s ease;';
       badge.appendChild(svg);badge.appendChild(lbl);
       form.parentNode.insertBefore(badge,form.nextSibling);
       form.addEventListener('submit',function(e){
