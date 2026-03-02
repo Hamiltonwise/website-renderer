@@ -5,6 +5,7 @@ import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
 import { successPage } from '../templates/success-page';
+import { confirmedPage } from '../templates/confirmed-page';
 import { renderPage, normalizeSections } from '../utils/renderer';
 import type { Project, Page } from '../types';
 import { getDb } from '../lib/db';
@@ -107,6 +108,12 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
     // Serve fallback success page if no DB page exists for /success
     if (pagePath === '/success') {
       res.type('html').send(successPage(businessName));
+      return;
+    }
+
+    // Serve fallback confirmed page if no DB page exists for /confirmed
+    if (pagePath === '/confirmed') {
+      res.type('html').send(confirmedPage(businessName));
       return;
     }
 
