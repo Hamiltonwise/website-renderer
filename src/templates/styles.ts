@@ -11,27 +11,10 @@ export const icons = {
   checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${brandColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
 };
 
-export const statusMessages: Record<string, { title: string; message: string; icon: string }> = {
-  CREATED: {
-    title: 'Getting Started',
-    message: "We're setting up your website. This usually takes just a moment.",
-    icon: icons.rocket,
-  },
-  GBP_SELECTED: {
-    title: 'Building Your Site',
-    message: "We're gathering information about your business to create the perfect website.",
-    icon: icons.search,
-  },
-  GENERATING: {
-    title: 'Creating Your Website',
-    message: 'Our AI is crafting a beautiful, custom website just for you.',
-    icon: icons.sparkles,
-  },
-  DEFAULT: {
-    title: 'Almost There',
-    message: 'Your website is being prepared. Please check back in a few moments.',
-    icon: icons.clock,
-  },
+export const siteNotReadyContent = {
+  title: 'Coming Soon',
+  message: "We're building something great for this business. Check back soon.",
+  icon: icons.rocket,
 };
 
 export const animationStyles = `

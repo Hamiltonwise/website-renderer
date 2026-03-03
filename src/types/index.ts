@@ -1,15 +1,11 @@
-// Project status enum
-export type ProjectStatus =
-  | 'CREATED'
-  | 'GBP_SELECTED'
-  | 'GBP_SCRAPED'
-  | 'WEBSITE_SCRAPED'
-  | 'IMAGES_ANALYZED'
-  | 'HTML_GENERATED'
-  | 'READY';
+// Project status enum (simplified — 3 states)
+export type ProjectStatus = 'CREATED' | 'IN_PROGRESS' | 'LIVE';
 
-// Page status enum
+// Page content lifecycle status
 export type PageStatus = 'draft' | 'published' | 'inactive';
+
+// Page generation pipeline status
+export type PageGenerationStatus = 'queued' | 'generating' | 'ready' | 'failed' | null;
 
 // Section structure (JSONB array items)
 export interface Section {
@@ -44,6 +40,8 @@ export interface Page {
   path: string;
   version: number;
   status: PageStatus;
+  generation_status: PageGenerationStatus;
+  template_page_id: string | null;
   sections: Section[];
   created_at: Date;
   updated_at: Date;

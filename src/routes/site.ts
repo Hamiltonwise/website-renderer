@@ -89,15 +89,12 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
 
   const businessName = getBusinessName(project);
 
-  // Check if project is ready.
-  // If the project is in an intermediate pipeline state (e.g. generating a new page)
-  // but already has published pages, skip the gate and render normally.
-  if (project.status !== 'HTML_GENERATED' && project.status !== 'READY') {
-    const hasPages = await hasPublishedPages(project.id);
-    if (!hasPages) {
-      res.type('html').send(siteNotReadyPage(project.status, businessName));
-      return;
-    }
+  // Gate: render only if published pages exist. Project status is not checked —
+  // generation is tracked at the page level via generation_status.
+  const hasPages = await hasPublishedPages(project.id);
+  if (!hasPages) {
+    res.type('html').send(siteNotReadyPage(businessName));
+    return;
   }
 
   // Get the page content
