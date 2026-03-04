@@ -171,6 +171,18 @@ function injectCodeSnippets(
 }
 
 /**
+ * Strip honeypot inputs and "Powered by Alloro Protect" badges that were
+ * accidentally baked into section content by the N8N headless rendering
+ * pipeline. The form script adds these at runtime — they should never be
+ * persisted in section HTML.
+ */
+function stripFormArtifacts(html: string): string {
+  return html
+    .replace(/<input[^>]*name="website_url"[^>]*tabindex="-1"[^>]*>/gi, '')
+    .replace(/<a[^>]*href="https:\/\/getalloro\.com\/alloro-protect"[^>]*>[\s\S]*?<\/a>/gi, '');
+}
+
+/**
  * Check if an HTML string's root element has data-alloro-hidden="true".
  */
 function isHiddenElement(html: string): boolean {
@@ -217,12 +229,12 @@ export function renderPage(
     (s) => !isHiddenElement(s.content)
   );
   const mainContent = visibleSections
-    .map((s) => stripHiddenElements(s.content))
+    .map((s) => stripFormArtifacts(stripHiddenElements(s.content)))
     .join('\n');
   const pageContent = [
-    stripHiddenElements(header),
+    stripFormArtifacts(stripHiddenElements(header)),
     mainContent,
-    stripHiddenElements(footer),
+    stripFormArtifacts(stripHiddenElements(footer)),
   ].join('\n');
 
   if (!wrapper.includes('{{slot}}')) {
@@ -235,7 +247,12 @@ export function renderPage(
     ].join('\n');
   }
 
-  let finalHtml = wrapper.replace('{{slot}}', pageContent);
+  // Strip any baked-in form handler scripts from the wrapper before assembly
+  const cleanWrapper = wrapper.replace(
+    /<script data-alloro-form-handler>[\s\S]*?<\/script>/gi,
+    ''
+  );
+  let finalHtml = cleanWrapper.replace('{{slot}}', pageContent);
 
   // Inject code snippets
   if (codeSnippets && codeSnippets.length > 0) {
@@ -243,9 +260,9 @@ export function renderPage(
   }
 
   // Inject default form submission handler on all pages
-  // Guard: skip if the script is already present (e.g. legacy wrapper data)
-  const alreadyHasScript = finalHtml.includes('data-alloro-form-handler');
-  if (projectId && apiBaseUrl && !alreadyHasScript) {
+  // The renderer is the sole authority for this script — any baked-in copies
+  // were already stripped from the wrapper and section content above.
+  if (projectId && apiBaseUrl) {
     const formScript = buildFormScript(projectId, apiBaseUrl);
     finalHtml = finalHtml.replace(/<\/body>/i, `${formScript}\n</body>`);
   }
