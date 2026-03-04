@@ -243,7 +243,7 @@ export function renderPage(
   }
 
   // Inject default form submission handler on all pages
-  // Skip if the deployment pipeline already baked it into the wrapper
+  // Guard: skip if the script is already present (e.g. legacy wrapper data)
   const alreadyHasScript = finalHtml.includes('data-alloro-form-handler');
   if (projectId && apiBaseUrl && !alreadyHasScript) {
     const formScript = buildFormScript(projectId, apiBaseUrl);
