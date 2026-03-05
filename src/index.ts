@@ -7,6 +7,7 @@ import { siteRoute } from './routes/site';
 import { verifyDomainRoute } from './routes/verify-domain';
 import { extractSubdomain } from './middleware/subdomain';
 import { getDb } from './lib/db';
+import { closeRedis } from './lib/redis';
 import { wrapInLayout } from './templates/layout';
 
 const app = express();
@@ -39,7 +40,8 @@ const server = app.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  server.close(() => {
+  server.close(async () => {
+    await closeRedis();
     getDb().destroy();
     process.exit(0);
   });
