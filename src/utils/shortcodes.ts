@@ -161,10 +161,11 @@ export function renderPostBlockHtml(
     .replace(/\{\{post\.published_at\}\}/g, escapeHtml(post.published_at));
 
   // Replace {{post.custom.<slug>}} tokens with custom field values
+  // Newlines are converted to <br> after escaping so textarea content renders with line breaks
   html = html.replace(/\{\{post\.custom\.([a-z0-9_]+)\}\}/g, (_match, fieldSlug: string) => {
     const value = post.custom_fields[fieldSlug];
     if (value === undefined || value === null) return '';
-    return escapeHtml(String(value));
+    return escapeHtml(String(value)).replace(/\n/g, '<br>');
   });
 
   return html;
