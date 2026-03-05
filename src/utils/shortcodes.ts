@@ -177,3 +177,49 @@ export function renderPostBlockHtml(
 export function hasPostBlockShortcodes(html: string): boolean {
   return html.includes('post_block');
 }
+
+// =====================================================================
+// MENU SHORTCODES
+// =====================================================================
+
+export interface MenuShortcode {
+  raw: string;
+  id: string; // menu slug
+  template: string; // menu template slug (empty = bare HTML fallback)
+}
+
+const MENU_SHORTCODE_REGEX = /\{\{\s*menu\s+((?:[a-z_]+='[^']*'\s*)+)\}\}/g;
+
+/**
+ * Parse all {{ menu id='slug' }} shortcodes from an HTML string.
+ */
+export function parseMenuShortcodes(html: string): MenuShortcode[] {
+  const results: MenuShortcode[] = [];
+  MENU_SHORTCODE_REGEX.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = MENU_SHORTCODE_REGEX.exec(html)) !== null) {
+    const raw = match[0];
+    const attrString = match[1];
+
+    const attrs: Record<string, string> = {};
+    let attrMatch: RegExpExecArray | null;
+    ATTR_REGEX.lastIndex = 0;
+    while ((attrMatch = ATTR_REGEX.exec(attrString)) !== null) {
+      attrs[attrMatch[1]] = attrMatch[2];
+    }
+
+    if (!attrs.id) continue;
+
+    results.push({ raw, id: attrs.id, template: attrs.template || "" });
+  }
+
+  return results;
+}
+
+/**
+ * Check if an HTML string contains any {{ menu }} shortcodes.
+ */
+export function hasMenuShortcodes(html: string): boolean {
+  return html.includes('{{ menu') || html.includes('{{menu');
+}

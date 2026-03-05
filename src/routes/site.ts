@@ -8,6 +8,7 @@ import { pageNotFoundPage } from '../templates/page-not-found';
 import { successPage } from '../templates/success-page';
 import { renderPage, normalizeSections } from '../utils/renderer';
 import { resolvePostBlocks } from '../services/postblock.service';
+import { resolveMenus } from '../services/menu.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
 import type { Project, Page } from '../types';
 import { getDb } from '../lib/db';
@@ -76,6 +77,9 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
 
   // Resolve {{ post_block }} shortcodes (runtime post rendering)
   html = await resolvePostBlocks(html, project.template_id, project.id);
+
+  // Resolve {{ menu id='slug' }} shortcodes
+  html = await resolveMenus(html, project.id, project.template_id || undefined);
 
   return html;
 }
@@ -171,6 +175,9 @@ async function assembleSinglePostHtml(
   // Single post pages may also contain post block shortcodes
   html = await resolvePostBlocks(html, project.template_id, project.id);
 
+  // Resolve {{ menu id='slug' }} shortcodes
+  html = await resolveMenus(html, project.id, project.template_id || undefined);
+
   return html;
 }
 
@@ -183,7 +190,7 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   if (req.query.nocache === '1') {
     try {
       const redis = getRedis();
-      const patterns = ['pb:*', 'posts:*', 'sp:*'];
+      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*'];
       for (const pattern of patterns) {
         const keys = await redis.keys(pattern);
         if (keys.length > 0) await redis.del(...keys);
