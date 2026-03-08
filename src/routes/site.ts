@@ -6,11 +6,12 @@ import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
 import { pageNotFoundPage } from '../templates/page-not-found';
 import { successPage } from '../templates/success-page';
-import { renderPage, normalizeSections } from '../utils/renderer';
+import { renderPage, normalizeSections, injectSeoMeta } from '../utils/renderer';
 import { resolvePostBlocks } from '../services/postblock.service';
 import { resolveMenus } from '../services/menu.service';
+import { fetchBusinessData } from '../services/seo.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
-import type { Project, Page } from '../types';
+import type { Project, Page, SeoData } from '../types';
 import { getDb } from '../lib/db';
 import { getRedis } from '../lib/redis';
 
@@ -80,6 +81,12 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
 
   // Resolve {{ menu id='slug' }} shortcodes
   html = await resolveMenus(html, project.id, project.template_id || undefined);
+
+  // Inject page-level SEO meta tags (replaces or adds to wrapper)
+  const seoData = page.seo_data as SeoData | null;
+  if (seoData) {
+    html = injectSeoMeta(html, seoData);
+  }
 
   return html;
 }
@@ -177,6 +184,12 @@ async function assembleSinglePostHtml(
 
   // Resolve {{ menu id='slug' }} shortcodes
   html = await resolveMenus(html, project.id, project.template_id || undefined);
+
+  // Inject post-level SEO meta tags
+  const postSeoData = post.seo_data as SeoData | null;
+  if (postSeoData) {
+    html = injectSeoMeta(html, postSeoData);
+  }
 
   return html;
 }

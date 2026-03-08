@@ -1,4 +1,4 @@
-import type { Section } from '../types';
+import type { Section, SeoData } from '../types';
 
 /**
  * Generates an inline <script> that auto-intercepts all forms on the page
@@ -268,4 +268,169 @@ export function renderPage(
   }
 
   return finalHtml;
+}
+
+// =====================================================================
+// SEO META TAG INJECTION
+// =====================================================================
+
+/**
+ * Replace an existing meta tag or inject a new one before </head>.
+ * Uses case-insensitive matching.
+ *
+ * @param html - Full HTML string
+ * @param attr - The attribute to match (e.g., 'name="description"' or 'property="og:title"')
+ * @param fullTag - The full replacement tag (e.g., '<meta name="description" content="...">')
+ */
+function replaceOrInjectMeta(html: string, attr: string, fullTag: string): string {
+  // Build regex to find existing tag with this attribute
+  const escapedAttr = attr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const existingRegex = new RegExp(`<meta\\s+[^>]*${escapedAttr}[^>]*/?>`, 'i');
+
+  if (existingRegex.test(html)) {
+    return html.replace(existingRegex, fullTag);
+  }
+
+  // Inject before </head>
+  return html.replace(/<\/head>/i, `${fullTag}\n</head>`);
+}
+
+/**
+ * Replace an existing <link> tag or inject a new one before </head>.
+ */
+function replaceOrInjectLink(html: string, relAttr: string, fullTag: string): string {
+  const escapedAttr = relAttr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const existingRegex = new RegExp(`<link\\s+[^>]*${escapedAttr}[^>]*/?>`, 'i');
+
+  if (existingRegex.test(html)) {
+    return html.replace(existingRegex, fullTag);
+  }
+
+  return html.replace(/<\/head>/i, `${fullTag}\n</head>`);
+}
+
+/**
+ * Escape a string for safe use in HTML attribute values.
+ */
+function escapeAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Inject page-level SEO meta tags into assembled HTML.
+ *
+ * Smart duplicate handling:
+ * - If a matching tag already exists in the wrapper → replace it
+ * - If not → inject before </head>
+ * - Never duplicates
+ *
+ * If seoData is null/empty, returns HTML unchanged (backward compatible).
+ */
+export function injectSeoMeta(html: string, seoData: SeoData | null): string {
+  if (!seoData) return html;
+
+  let result = html;
+
+  // 1. Title tag
+  if (seoData.meta_title) {
+    const escapedTitle = escapeAttr(seoData.meta_title);
+    const titleRegex = /<title>[^<]*<\/title>/i;
+    if (titleRegex.test(result)) {
+      result = result.replace(titleRegex, `<title>${escapedTitle}</title>`);
+    } else {
+      result = result.replace(/<\/head>/i, `<title>${escapedTitle}</title>\n</head>`);
+    }
+  }
+
+  // 2. Meta description
+  if (seoData.meta_description) {
+    result = replaceOrInjectMeta(
+      result,
+      'name="description"',
+      `<meta name="description" content="${escapeAttr(seoData.meta_description)}">`
+    );
+  }
+
+  // 3. Canonical URL
+  if (seoData.canonical_url) {
+    result = replaceOrInjectLink(
+      result,
+      'rel="canonical"',
+      `<link rel="canonical" href="${escapeAttr(seoData.canonical_url)}">`
+    );
+  }
+
+  // 4. Robots directive
+  if (seoData.robots) {
+    result = replaceOrInjectMeta(
+      result,
+      'name="robots"',
+      `<meta name="robots" content="${escapeAttr(seoData.robots)}">`
+    );
+  }
+
+  // 5. Max image preview (appended to robots or as separate tag)
+  if (seoData.max_image_preview) {
+    result = replaceOrInjectMeta(
+      result,
+      'name="robots" content="max-image-preview',
+      `<meta name="robots" content="max-image-preview:${escapeAttr(seoData.max_image_preview)}">`
+    );
+  }
+
+  // 6. Open Graph tags
+  if (seoData.og_title) {
+    result = replaceOrInjectMeta(
+      result,
+      'property="og:title"',
+      `<meta property="og:title" content="${escapeAttr(seoData.og_title)}">`
+    );
+  }
+
+  if (seoData.og_description) {
+    result = replaceOrInjectMeta(
+      result,
+      'property="og:description"',
+      `<meta property="og:description" content="${escapeAttr(seoData.og_description)}">`
+    );
+  }
+
+  if (seoData.og_image) {
+    result = replaceOrInjectMeta(
+      result,
+      'property="og:image"',
+      `<meta property="og:image" content="${escapeAttr(seoData.og_image)}">`
+    );
+  }
+
+  if (seoData.og_type) {
+    result = replaceOrInjectMeta(
+      result,
+      'property="og:type"',
+      `<meta property="og:type" content="${escapeAttr(seoData.og_type)}">`
+    );
+  }
+
+  // 7. OG URL (matches canonical)
+  if (seoData.canonical_url) {
+    result = replaceOrInjectMeta(
+      result,
+      'property="og:url"',
+      `<meta property="og:url" content="${escapeAttr(seoData.canonical_url)}">`
+    );
+  }
+
+  // 8. JSON-LD schema blocks — inject before </head>
+  if (seoData.schema_json && Array.isArray(seoData.schema_json) && seoData.schema_json.length > 0) {
+    const schemaBlocks = seoData.schema_json
+      .map((schema) => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`)
+      .join('\n');
+    result = result.replace(/<\/head>/i, `${schemaBlocks}\n</head>`);
+  }
+
+  return result;
 }

@@ -13,10 +13,26 @@ export interface Section {
   content: string;
 }
 
+// SEO data stored on pages and posts
+export interface SeoData {
+  location_context?: string | null; // location_id or "organization"
+  meta_title?: string | null;
+  meta_description?: string | null;
+  canonical_url?: string | null;
+  robots?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image?: string | null;
+  og_type?: string | null;
+  max_image_preview?: string | null;
+  schema_json?: Record<string, unknown>[] | null;
+}
+
 // Project model
 export interface Project {
   id: string;
   user_id: string;
+  organization_id: number | null;
   generated_hostname: string;
   status: ProjectStatus;
   selected_place_id: string | null;
@@ -43,6 +59,7 @@ export interface Page {
   generation_status: PageGenerationStatus;
   template_page_id: string | null;
   sections: Section[];
+  seo_data: SeoData | null;
   created_at: Date;
   updated_at: Date;
 }

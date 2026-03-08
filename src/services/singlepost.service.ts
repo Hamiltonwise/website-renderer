@@ -25,6 +25,7 @@ interface SinglePostResult {
     excerpt: string | null;
     featured_image: string | null;
     custom_fields: Record<string, unknown> | string | null;
+    seo_data: Record<string, unknown> | null;
     categories: string;
     tags: string;
     created_at: string;
@@ -78,7 +79,7 @@ export async function getSinglePostData(
     })
     .select(
       'id', 'title', 'slug', 'content', 'excerpt', 'featured_image',
-      'custom_fields', 'created_at', 'updated_at', 'published_at'
+      'custom_fields', 'seo_data', 'created_at', 'updated_at', 'published_at'
     )
     .first();
 
