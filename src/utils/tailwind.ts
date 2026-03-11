@@ -11,11 +11,13 @@ import { getRedis } from '../lib/redis';
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
 const CACHE_PREFIX = 'tw:';
 
-// Play CDN patterns to strip
-const PLAY_CDN_SCRIPT_RE =
-  /<script[^>]*src=["'][^"']*cdn\.tailwindcss\.com[^"']*["'][^>]*>[\s\S]*?<\/script>/gi;
-const PLAY_CDN_INLINE_RE =
-  /<script[^>]*>[\s\S]*?cdn\.tailwindcss\.com[\s\S]*?<\/script>/gi;
+// Tailwind browser script patterns to strip:
+// - cdn.tailwindcss.com (Play CDN v3)
+// - @tailwindcss/browser (v4 browser build via jsdelivr/unpkg/etc.)
+const TW_CDN_SCRIPT_RE =
+  /<script[^>]*src=["'][^"']*(?:cdn\.tailwindcss\.com|@tailwindcss\/browser)[^"']*["'][^>]*>[\s\S]*?<\/script>/gi;
+const TW_CDN_INLINE_RE =
+  /<script[^>]*>[\s\S]*?(?:cdn\.tailwindcss\.com|@tailwindcss\/browser)[\s\S]*?<\/script>/gi;
 
 // Candidate extraction: class="..." and className="..."
 const CLASS_ATTR_RE = /(?:class|className)\s*=\s*["']([^"']+)["']/gi;
@@ -68,10 +70,15 @@ function hashCandidates(candidates: string[]): string {
 /**
  * Strip any Tailwind Play CDN <script> tags from HTML.
  */
+// Cloudflare email-decode artifact baked by N8N headless rendering
+const CF_EMAIL_DECODE_RE =
+  /<script[^>]*src=["'][^"']*cloudflare-static\/email-decode[^"']*["'][^>]*>[\s\S]*?<\/script>/gi;
+
 export function stripPlayCDN(html: string): string {
   return html
-    .replace(PLAY_CDN_SCRIPT_RE, '')
-    .replace(PLAY_CDN_INLINE_RE, '');
+    .replace(TW_CDN_SCRIPT_RE, '')
+    .replace(TW_CDN_INLINE_RE, '')
+    .replace(CF_EMAIL_DECODE_RE, '');
 }
 
 /**
