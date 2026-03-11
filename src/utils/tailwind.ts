@@ -1,0 +1,154 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+const { compile: twCompile, optimize: twOptimize } = require('@tailwindcss/node') as {
+  compile: (css: string, opts: { base: string; onDependency: (p: string) => void }) => Promise<{ build: (candidates: string[]) => string }>;
+  optimize: (css: string, opts: { minify: boolean }) => { code: string };
+};
+
+import { createHash } from 'crypto';
+import path from 'path';
+import { getRedis } from '../lib/redis';
+
+const CACHE_TTL = 60 * 60 * 24; // 24 hours
+const CACHE_PREFIX = 'tw:';
+
+// Play CDN patterns to strip
+const PLAY_CDN_SCRIPT_RE =
+  /<script[^>]*src=["'][^"']*cdn\.tailwindcss\.com[^"']*["'][^>]*>[\s\S]*?<\/script>/gi;
+const PLAY_CDN_INLINE_RE =
+  /<script[^>]*>[\s\S]*?cdn\.tailwindcss\.com[\s\S]*?<\/script>/gi;
+
+// Candidate extraction: class="..." and className="..."
+const CLASS_ATTR_RE = /(?:class|className)\s*=\s*["']([^"']+)["']/gi;
+
+/**
+ * Singleton: the compiled Tailwind stylesheet, initialized once on first use.
+ * `build(candidates)` is cheap (~3ms) — the expensive `compile()` (~10ms) runs once.
+ */
+let compilerPromise: ReturnType<typeof twCompile> | null = null;
+
+function getCompiler(): ReturnType<typeof twCompile> {
+  if (!compilerPromise) {
+    compilerPromise = twCompile('@import "tailwindcss";', {
+      base: path.dirname(require.resolve('tailwindcss/package.json')),
+      onDependency: () => {},
+    });
+  }
+  return compilerPromise;
+}
+
+/**
+ * Extract all potential Tailwind candidate strings from HTML.
+ * Pulls values from class="..." attributes and splits on whitespace.
+ */
+function extractCandidates(html: string): string[] {
+  const candidates = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  while ((match = CLASS_ATTR_RE.exec(html)) !== null) {
+    const classStr = match[1];
+    for (const cls of classStr.split(/\s+/)) {
+      const trimmed = cls.trim();
+      if (trimmed) candidates.add(trimmed);
+    }
+  }
+
+  // Reset lastIndex for the global regex
+  CLASS_ATTR_RE.lastIndex = 0;
+
+  return Array.from(candidates);
+}
+
+/**
+ * Hash a string with MD5 for cache keying.
+ */
+function hashCandidates(candidates: string[]): string {
+  return createHash('md5').update(candidates.sort().join(',')).digest('hex');
+}
+
+/**
+ * Strip any Tailwind Play CDN <script> tags from HTML.
+ */
+export function stripPlayCDN(html: string): string {
+  return html
+    .replace(PLAY_CDN_SCRIPT_RE, '')
+    .replace(PLAY_CDN_INLINE_RE, '');
+}
+
+/**
+ * Inject the Play CDN <script> before </head> (used for draft previews).
+ */
+export function injectPlayCDN(html: string): string {
+  const tag = '<script src="https://cdn.tailwindcss.com"></script>';
+  return html.replace(/<\/head>/i, `${tag}\n</head>`);
+}
+
+/**
+ * Compile Tailwind CSS for the given HTML and return minified CSS string.
+ */
+async function compileCss(candidates: string[]): Promise<string> {
+  const compiler = await getCompiler();
+  const css = compiler.build(candidates);
+  const { code } = twOptimize(css, { minify: true });
+  return code;
+}
+
+/**
+ * Get compiled CSS from Redis cache, or compile and cache on miss.
+ */
+async function getCachedOrCompile(candidates: string[]): Promise<string> {
+  const hash = hashCandidates(candidates);
+  const cacheKey = `${CACHE_PREFIX}${hash}`;
+
+  try {
+    const redis = getRedis();
+    const cached = await redis.get(cacheKey);
+    if (cached) return cached;
+  } catch {
+    // Redis unavailable — compile without caching
+  }
+
+  const css = await compileCss(candidates);
+
+  try {
+    const redis = getRedis();
+    await redis.set(cacheKey, css, 'EX', CACHE_TTL);
+  } catch {
+    // Cache write failure is non-fatal
+  }
+
+  return css;
+}
+
+/**
+ * Process Tailwind CSS for assembled HTML.
+ *
+ * - Published pages: strips Play CDN, compiles + injects lean <style> tag
+ * - Draft pages: strips any existing Play CDN, injects fresh Play CDN script
+ */
+export async function processTailwindCSS(
+  html: string,
+  isDraft: boolean
+): Promise<string> {
+  // Always strip any existing Play CDN scripts first
+  let result = stripPlayCDN(html);
+
+  if (isDraft) {
+    // Draft: inject Play CDN for real-time editing
+    return injectPlayCDN(result);
+  }
+
+  // Published: compile only the CSS needed
+  const candidates = extractCandidates(result);
+
+  if (candidates.length === 0) {
+    return result;
+  }
+
+  const css = await getCachedOrCompile(candidates);
+
+  // Inject compiled CSS as <style> before </head>
+  const styleTag = `<style data-tailwind-compiled>${css}</style>`;
+  result = result.replace(/<\/head>/i, `${styleTag}\n</head>`);
+
+  return result;
+}

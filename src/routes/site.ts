@@ -11,6 +11,7 @@ import { resolvePostBlocks } from '../services/postblock.service';
 import { resolveMenus } from '../services/menu.service';
 import { fetchBusinessData } from '../services/seo.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
+import { processTailwindCSS } from '../utils/tailwind';
 import type { Project, Page, SeoData } from '../types';
 import { getDb } from '../lib/db';
 import { getRedis } from '../lib/redis';
@@ -87,6 +88,9 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
   if (seoData) {
     html = injectSeoMeta(html, seoData);
   }
+
+  // Tailwind CSS: compile for published, Play CDN for drafts
+  html = await processTailwindCSS(html, page.status === 'draft');
 
   return html;
 }
@@ -191,6 +195,9 @@ async function assembleSinglePostHtml(
     html = injectSeoMeta(html, postSeoData);
   }
 
+  // Tailwind CSS: single post pages are always published content
+  html = await processTailwindCSS(html, false);
+
   return html;
 }
 
@@ -203,7 +210,7 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   if (req.query.nocache === '1') {
     try {
       const redis = getRedis();
-      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*'];
+      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*', 'tw:*'];
       for (const pattern of patterns) {
         const keys = await redis.keys(pattern);
         if (keys.length > 0) await redis.del(...keys);
