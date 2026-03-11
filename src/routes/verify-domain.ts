@@ -22,12 +22,11 @@ export async function verifyDomainRoute(req: Request, res: Response): Promise<vo
     return;
   }
 
-  // Check if it's a verified custom domain (primary or alt)
+  // Check if domain exists as a custom domain (primary or alt) — existence in DB is sufficient for cert provisioning
   const project = await getDb()('projects')
     .where(function () {
       this.where('custom_domain', domain).orWhere('custom_domain_alt', domain);
     })
-    .whereNotNull('domain_verified_at')
     .first();
 
   if (project) {
