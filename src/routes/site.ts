@@ -9,6 +9,7 @@ import { successPage } from '../templates/success-page';
 import { renderPage, normalizeSections, injectSeoMeta } from '../utils/renderer';
 import { resolvePostBlocks } from '../services/postblock.service';
 import { resolveMenus } from '../services/menu.service';
+import { resolveRedirect as resolveRedirectForProject } from '../services/redirect.service';
 import { fetchBusinessData } from '../services/seo.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
 import { processTailwindCSS } from '../utils/tailwind';
@@ -210,7 +211,7 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   if (req.query.nocache === '1') {
     try {
       const redis = getRedis();
-      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*', 'tw:*'];
+      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*', 'tw:*', 'redir:*'];
       for (const pattern of patterns) {
         const keys = await redis.keys(pattern);
         if (keys.length > 0) await redis.del(...keys);
@@ -238,6 +239,13 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   const hasPages = await hasPublishedPages(project.id);
   if (!hasPages) {
     res.type('html').send(siteNotReadyPage(businessName));
+    return;
+  }
+
+  // Check for redirects before page lookup
+  const redirect = await resolveRedirectForProject(project.id, pagePath);
+  if (redirect) {
+    res.redirect(redirect.type, redirect.to_path);
     return;
   }
 
