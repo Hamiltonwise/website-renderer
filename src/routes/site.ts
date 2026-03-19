@@ -9,6 +9,7 @@ import { successPage } from '../templates/success-page';
 import { renderPage, normalizeSections, injectSeoMeta } from '../utils/renderer';
 import { resolvePostBlocks } from '../services/postblock.service';
 import { resolveMenus } from '../services/menu.service';
+import { resolveReviewBlocks } from '../services/review.service';
 import { resolveRedirect as resolveRedirectForProject } from '../services/redirect.service';
 import { fetchBusinessData } from '../services/seo.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
@@ -80,6 +81,9 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
 
   // Resolve {{ post_block }} shortcodes (runtime post rendering)
   html = await resolvePostBlocks(html, project.template_id, project.id);
+
+  // Resolve {{ review_block }} shortcodes (runtime review rendering)
+  html = await resolveReviewBlocks(html, project.id, project.template_id || undefined);
 
   // Resolve {{ menu id='slug' }} shortcodes
   html = await resolveMenus(html, project.id, project.template_id || undefined);
@@ -187,6 +191,9 @@ async function assembleSinglePostHtml(
   // Single post pages may also contain post block shortcodes
   html = await resolvePostBlocks(html, project.template_id, project.id);
 
+  // Resolve {{ review_block }} shortcodes
+  html = await resolveReviewBlocks(html, project.id, project.template_id || undefined);
+
   // Resolve {{ menu id='slug' }} shortcodes
   html = await resolveMenus(html, project.id, project.template_id || undefined);
 
@@ -211,7 +218,7 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   if (req.query.nocache === '1') {
     try {
       const redis = getRedis();
-      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*', 'tw:*', 'redir:*'];
+      const patterns = ['pb:*', 'posts:*', 'sp:*', 'mt:*', 'menu:*', 'tw:*', 'redir:*', 'rb:*', 'reviews:*'];
       for (const pattern of patterns) {
         const keys = await redis.keys(pattern);
         if (keys.length > 0) await redis.del(...keys);

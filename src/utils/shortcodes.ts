@@ -224,3 +224,111 @@ export function parseMenuShortcodes(html: string): MenuShortcode[] {
 export function hasMenuShortcodes(html: string): boolean {
   return html.includes('{{ menu') || html.includes('{{menu');
 }
+
+// =====================================================================
+// REVIEW BLOCK SHORTCODES
+// =====================================================================
+
+export interface ReviewBlockShortcode {
+  raw: string;
+  id: string;
+  location: string;
+  min_rating: number;
+  limit: number;
+  offset: number;
+  order: 'asc' | 'desc';
+}
+
+const REVIEW_BLOCK_SHORTCODE_REGEX = /\{\{\s*review_block\s+((?:[a-z_]+='[^']*'\s*)+)\}\}/g;
+
+/**
+ * Parse all {{ review_block id='slug' ... }} shortcodes from an HTML string.
+ */
+export function parseReviewBlockShortcodes(html: string): ReviewBlockShortcode[] {
+  const results: ReviewBlockShortcode[] = [];
+  REVIEW_BLOCK_SHORTCODE_REGEX.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = REVIEW_BLOCK_SHORTCODE_REGEX.exec(html)) !== null) {
+    const raw = match[0];
+    const attrString = match[1];
+
+    const attrs: Record<string, string> = {};
+    let attrMatch: RegExpExecArray | null;
+    ATTR_REGEX.lastIndex = 0;
+    while ((attrMatch = ATTR_REGEX.exec(attrString)) !== null) {
+      attrs[attrMatch[1]] = attrMatch[2];
+    }
+
+    if (!attrs.id) continue;
+
+    results.push({
+      raw,
+      id: attrs.id,
+      location: attrs.location || 'primary',
+      min_rating: attrs.min_rating ? parseInt(attrs.min_rating, 10) || 1 : 1,
+      limit: attrs.limit ? parseInt(attrs.limit, 10) || 10 : 10,
+      offset: attrs.offset ? parseInt(attrs.offset, 10) || 0 : 0,
+      order: attrs.order === 'asc' ? 'asc' : 'desc',
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check if an HTML string contains any {{ review_block }} shortcodes.
+ */
+export function hasReviewBlockShortcodes(html: string): boolean {
+  return html.includes('review_block');
+}
+
+/**
+ * Generate star SVG HTML (filled + empty) for a given count.
+ */
+function generateStarsHtml(count: number): string {
+  const filled = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-yellow-400"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+  const empty = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="w-5 h-5 text-gray-300"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+  const stars: string[] = [];
+  for (let i = 1; i <= 5; i++) {
+    stars.push(i <= count ? filled : empty);
+  }
+  return stars.join('');
+}
+
+function formatReviewDate(dateStr: string | Date | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/**
+ * Replace {{review.*}} tokens in review block HTML with actual review data.
+ */
+export function renderReviewBlockHtml(
+  template: string,
+  review: {
+    stars: number;
+    text: string | null;
+    reviewer_name: string | null;
+    reviewer_photo_url: string | null;
+    is_anonymous: boolean;
+    review_created_at: string | Date | null;
+    has_reply: boolean;
+    reply_text: string | null;
+    reply_date: string | Date | null;
+  }
+): string {
+  let html = template;
+  html = html.replace(/\{\{review\.stars\}\}/g, String(review.stars || 0));
+  html = html.replace(/\{\{review\.stars_html\}\}/g, generateStarsHtml(review.stars || 0));
+  html = html.replace(/\{\{review\.text\}\}/g, escapeHtml(review.text || ''));
+  html = html.replace(/\{\{review\.reviewer_name\}\}/g, escapeHtml(review.reviewer_name || 'Anonymous'));
+  html = html.replace(/\{\{review\.reviewer_photo\}\}/g, escapeHtml(review.reviewer_photo_url || ''));
+  html = html.replace(/\{\{review\.is_anonymous\}\}/g, String(review.is_anonymous || false));
+  html = html.replace(/\{\{review\.date\}\}/g, escapeHtml(formatReviewDate(review.review_created_at)));
+  html = html.replace(/\{\{review\.has_reply\}\}/g, String(review.has_reply || false));
+  html = html.replace(/\{\{review\.reply_text\}\}/g, escapeHtml(review.reply_text || ''));
+  html = html.replace(/\{\{review\.reply_date\}\}/g, escapeHtml(formatReviewDate(review.reply_date)));
+  return html;
+}
