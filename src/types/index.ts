@@ -49,6 +49,9 @@ export interface Project {
   updated_at: Date;
 }
 
+// Page type discriminator
+export type PageType = 'sections' | 'artifact';
+
 // Page model
 export interface Page {
   id: string;
@@ -58,6 +61,8 @@ export interface Page {
   status: PageStatus;
   generation_status: PageGenerationStatus;
   template_page_id: string | null;
+  page_type: PageType;
+  artifact_s3_prefix: string | null;
   sections: Section[];
   seo_data: SeoData | null;
   created_at: Date;

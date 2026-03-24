@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getProjectByHostname, getProjectByCustomDomain } from '../services/project.service';
-import { getPageToRender, hasPublishedPages } from '../services/page.service';
+import { getPageToRender, hasPublishedPages, getArtifactPageByPrefix } from '../services/page.service';
+import { fetchArtifactIndexHtml, fetchArtifactAsset } from '../services/artifact.service';
 import { getSinglePostData } from '../services/singlepost.service';
 import { siteNotFoundPage } from '../templates/site-not-found';
 import { siteNotReadyPage } from '../templates/site-not-ready';
@@ -96,6 +97,94 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
 
   // Tailwind CSS: compile for published, Play CDN for drafts
   html = await processTailwindCSS(html, page.status === 'draft');
+
+  return html;
+}
+
+/**
+ * Assemble HTML for an artifact page (uploaded React app build).
+ *
+ * Fetches the app's index.html from S3, then injects:
+ * - Site header after <body>
+ * - Site footer before </body>
+ * - SEO meta tags into <head>
+ * - Code snippets at their standard injection points
+ *
+ * Does NOT run Tailwind compilation or inject the form handler script —
+ * the React app handles its own CSS and forms.
+ */
+async function assembleArtifactHtml(project: Project, page: Page): Promise<string> {
+  if (!page.artifact_s3_prefix) {
+    throw new Error(`Artifact page ${page.id} has no S3 prefix`);
+  }
+
+  const db = getDb();
+
+  // Fetch the React app's index.html from S3
+  let html = await fetchArtifactIndexHtml(page.artifact_s3_prefix);
+
+  // Fetch and merge code snippets (same pattern as section pages)
+  const templateSnippets = project.template_id
+    ? await db('header_footer_code')
+        .where({ template_id: project.template_id, is_enabled: true })
+        .orderBy('order_index', 'asc')
+    : [];
+
+  const projectSnippets = await db('header_footer_code')
+    .where({ project_id: project.id, is_enabled: true })
+    .orderBy('order_index', 'asc');
+
+  const mergedSnippets = mergeCodeSnippets(templateSnippets, projectSnippets);
+
+  // Inject site header after <body> tag
+  if (project.header) {
+    html = html.replace(/<body([^>]*)>/i, `<body$1>\n${project.header}`);
+  }
+
+  // Inject site footer before </body> tag
+  if (project.footer) {
+    html = html.replace(/<\/body>/i, `${project.footer}\n</body>`);
+  }
+
+  // Inject code snippets at standard locations (head_start, head_end, body_start, body_end)
+  if (mergedSnippets.length > 0) {
+    const enabled = mergedSnippets.filter((s) => s.is_enabled);
+    const targeted = enabled.filter((s) => {
+      if (!s.page_ids || s.page_ids.length === 0) return true;
+      return s.page_ids.includes(page.id);
+    });
+
+    const byLocation: Record<string, any[]> = {
+      head_start: targeted.filter((s) => s.location === 'head_start').sort((a: any, b: any) => a.order_index - b.order_index),
+      head_end: targeted.filter((s) => s.location === 'head_end').sort((a: any, b: any) => a.order_index - b.order_index),
+      body_start: targeted.filter((s) => s.location === 'body_start').sort((a: any, b: any) => a.order_index - b.order_index),
+      body_end: targeted.filter((s) => s.location === 'body_end').sort((a: any, b: any) => a.order_index - b.order_index),
+    };
+
+    if (byLocation.head_start.length > 0) {
+      const code = byLocation.head_start.map((s) => s.code).join('\n');
+      html = html.replace(/<head>/i, `<head>\n${code}`);
+    }
+    if (byLocation.head_end.length > 0) {
+      const code = byLocation.head_end.map((s) => s.code).join('\n');
+      html = html.replace(/<\/head>/i, `${code}\n</head>`);
+    }
+    if (byLocation.body_start.length > 0) {
+      const code = byLocation.body_start.map((s) => s.code).join('\n');
+      // Inject after header (which was already injected after <body>)
+      html = html.replace(/<body([^>]*)>/i, `<body$1>\n${code}`);
+    }
+    if (byLocation.body_end.length > 0) {
+      const code = byLocation.body_end.map((s) => s.code).join('\n');
+      html = html.replace(/<\/body>/i, `${code}\n</body>`);
+    }
+  }
+
+  // Inject SEO meta tags
+  const seoData = page.seo_data as SeoData | null;
+  if (seoData) {
+    html = injectSeoMeta(html, seoData);
+  }
 
   return html;
 }
@@ -259,7 +348,30 @@ export async function siteRoute(req: Request, res: Response): Promise<void> {
   // Get the page content
   const page = await getPageToRender(project.id, pagePath);
 
+  // Artifact page: serve the React app with header/footer/SEO injection
+  if (page && page.page_type === 'artifact') {
+    const html = await assembleArtifactHtml(project, page);
+    res.type('html').send(html);
+    return;
+  }
+
   if (!page) {
+    // Try artifact asset sub-request (e.g., /calculator/assets/index-abc.js)
+    const artifactMatch = await getArtifactPageByPrefix(project.id, pagePath);
+    if (artifactMatch && artifactMatch.page.artifact_s3_prefix) {
+      const asset = await fetchArtifactAsset(
+        artifactMatch.page.artifact_s3_prefix,
+        artifactMatch.subPath
+      );
+      if (asset) {
+        res
+          .type(asset.contentType)
+          .set('Cache-Control', 'public, max-age=31536000, immutable')
+          .send(asset.buffer);
+        return;
+      }
+    }
+
     // Try single post routing for 2-segment paths: /{type-slug}/{post-slug}
     const segments = pagePath.split('/').filter(Boolean);
     if (segments.length === 2 && project.template_id) {

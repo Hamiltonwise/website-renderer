@@ -49,3 +49,34 @@ export async function hasPublishedPages(projectId: string): Promise<boolean> {
 
   return !!row;
 }
+
+/**
+ * Find an artifact page whose path is a prefix of the requested URL.
+ * Used for serving sub-assets (e.g., /calculator/assets/index-abc.js → artifact at /calculator).
+ * Returns the artifact page and the relative sub-path within the artifact bundle.
+ */
+export async function getArtifactPageByPrefix(
+  projectId: string,
+  requestPath: string
+): Promise<{ page: Page; subPath: string } | null> {
+  // Query artifact pages for this project, ordered by path length desc (longest prefix wins)
+  const artifactPages = await getDb()('pages')
+    .where({
+      project_id: projectId,
+      page_type: 'artifact',
+    })
+    .whereIn('status', ['published', 'draft'])
+    .orderByRaw('LENGTH(path) DESC');
+
+  for (const page of artifactPages) {
+    const prefix = page.path.endsWith('/') ? page.path : page.path + '/';
+    if (requestPath.startsWith(prefix)) {
+      const subPath = requestPath.slice(prefix.length);
+      if (subPath.length > 0) {
+        return { page, subPath };
+      }
+    }
+  }
+
+  return null;
+}
