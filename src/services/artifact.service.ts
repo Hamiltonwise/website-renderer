@@ -7,14 +7,17 @@
 
 import path from 'path';
 
-const S3_BUCKET = process.env.AWS_S3_IMPORTS_BUCKET || 'alloro-imports';
-const S3_REGION = process.env.AWS_S3_IMPORTS_REGION || 'us-east-1';
-
 /**
  * Build the public S3 URL for an artifact file.
+ * Reads env vars at call time (not module load) because dotenv.config()
+ * runs after ES module imports are hoisted.
  */
 function buildArtifactUrl(s3Prefix: string, filePath: string): string {
-  return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Prefix}/${filePath}`;
+  const bucket = process.env.AWS_S3_IMPORTS_BUCKET || 'alloro-imports';
+  const region = process.env.AWS_S3_IMPORTS_REGION || 'us-east-1';
+  const url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Prefix}/${filePath}`;
+  console.log(`[Artifact] Fetching: ${url}`);
+  return url;
 }
 
 /**

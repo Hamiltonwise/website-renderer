@@ -120,10 +120,17 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
 
   const db = getDb();
 
-  // Fetch the React app's index.html from S3
+  // Serve the React app's index.html as-is — no wrapper, header, or footer.
+  // Only inject SEO meta tags and code snippets into the existing HTML structure.
   let html = await fetchArtifactIndexHtml(page.artifact_s3_prefix);
 
-  // Fetch and merge code snippets (same pattern as section pages)
+  // Inject SEO meta tags
+  const seoData = page.seo_data as SeoData | null;
+  if (seoData) {
+    html = injectSeoMeta(html, seoData);
+  }
+
+  // Inject code snippets (tracking scripts, analytics, etc.)
   const templateSnippets = project.template_id
     ? await db('header_footer_code')
         .where({ template_id: project.template_id, is_enabled: true })
@@ -136,20 +143,8 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
 
   const mergedSnippets = mergeCodeSnippets(templateSnippets, projectSnippets);
 
-  // Inject site header after <body> tag
-  if (project.header) {
-    html = html.replace(/<body([^>]*)>/i, `<body$1>\n${project.header}`);
-  }
-
-  // Inject site footer before </body> tag
-  if (project.footer) {
-    html = html.replace(/<\/body>/i, `${project.footer}\n</body>`);
-  }
-
-  // Inject code snippets at standard locations (head_start, head_end, body_start, body_end)
   if (mergedSnippets.length > 0) {
-    const enabled = mergedSnippets.filter((s) => s.is_enabled);
-    const targeted = enabled.filter((s) => {
+    const targeted = mergedSnippets.filter((s) => {
       if (!s.page_ids || s.page_ids.length === 0) return true;
       return s.page_ids.includes(page.id);
     });
@@ -171,19 +166,12 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
     }
     if (byLocation.body_start.length > 0) {
       const code = byLocation.body_start.map((s) => s.code).join('\n');
-      // Inject after header (which was already injected after <body>)
       html = html.replace(/<body([^>]*)>/i, `<body$1>\n${code}`);
     }
     if (byLocation.body_end.length > 0) {
       const code = byLocation.body_end.map((s) => s.code).join('\n');
       html = html.replace(/<\/body>/i, `${code}\n</body>`);
     }
-  }
-
-  // Inject SEO meta tags
-  const seoData = page.seo_data as SeoData | null;
-  if (seoData) {
-    html = injectSeoMeta(html, seoData);
   }
 
   return html;

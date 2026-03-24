@@ -127,6 +127,53 @@ async function getCachedOrCompile(candidates: string[]): Promise<string> {
 }
 
 /**
+ * Compile Tailwind CSS from header/footer HTML only.
+ * Used by artifact pages to style injected site chrome without
+ * running preflight resets that would clobber the React app's CSS.
+ *
+ * Strips Tailwind's preflight/base layer from the output so only
+ * utility classes are injected — the React app owns its own resets.
+ */
+export async function compileHeaderFooterTailwind(headerFooterHtml: string): Promise<string> {
+  const candidates = extractCandidates(headerFooterHtml);
+  if (candidates.length === 0) return '';
+  const css = await getCachedOrCompile(candidates);
+
+  // Strip preflight: remove everything between the first { and the start
+  // of utility classes. Preflight is in @layer base which comes first.
+  // Simpler approach: just strip common reset selectors that break React apps.
+  // The compiled CSS has no @layer wrappers after optimization, so we strip
+  // the leading block of universal/element selectors.
+  return css
+    .replace(/\*\s*,\s*::before\s*,\s*::after\s*\{[^}]*\}/g, '')
+    .replace(/::before\s*,\s*::after\s*\{[^}]*\}/g, '')
+    .replace(/html\s*\{[^}]*\}/g, '')
+    .replace(/body\s*\{[^}]*\}/g, '')
+    .replace(/hr\s*\{[^}]*\}/g, '')
+    .replace(/h[1-6]\s*\{[^}]*\}/g, '')
+    .replace(/a\s*\{[^}]*\}/g, '')
+    .replace(/b\s*,\s*strong\s*\{[^}]*\}/g, '')
+    .replace(/small\s*\{[^}]*\}/g, '')
+    .replace(/code\s*,\s*kbd\s*,\s*samp\s*,\s*pre\s*\{[^}]*\}/g, '')
+    .replace(/table\s*\{[^}]*\}/g, '')
+    .replace(/button\s*,\s*input\s*,\s*optgroup\s*,\s*select\s*,\s*textarea\s*\{[^}]*\}/g, '')
+    .replace(/:-moz-focusring\s*\{[^}]*\}/g, '')
+    .replace(/:-moz-ui-invalid\s*\{[^}]*\}/g, '')
+    .replace(/progress\s*\{[^}]*\}/g, '')
+    .replace(/::-webkit-inner-spin-button\s*,\s*::-webkit-outer-spin-button\s*\{[^}]*\}/g, '')
+    .replace(/::-webkit-search-decoration\s*\{[^}]*\}/g, '')
+    .replace(/::-webkit-file-upload-button\s*\{[^}]*\}/g, '')
+    .replace(/summary\s*\{[^}]*\}/g, '')
+    .replace(/blockquote\s*,\s*dl\s*,\s*dd\s*,\s*h[1-6]\s*,\s*hr\s*,\s*figure\s*,\s*p\s*,\s*pre\s*\{[^}]*\}/g, '')
+    .replace(/fieldset\s*\{[^}]*\}/g, '')
+    .replace(/legend\s*\{[^}]*\}/g, '')
+    .replace(/ol\s*,\s*ul\s*,\s*menu\s*\{[^}]*\}/g, '')
+    .replace(/textarea\s*\{[^}]*\}/g, '')
+    .replace(/img\s*,\s*svg\s*,\s*video\s*,\s*canvas\s*,\s*audio\s*,\s*iframe\s*,\s*embed\s*,\s*object\s*\{[^}]*\}/g, '')
+    .replace(/\[hidden\]\s*\{[^}]*\}/g, '');
+}
+
+/**
  * Process Tailwind CSS for assembled HTML.
  *
  * - Published pages: strips Play CDN, compiles + injects lean <style> tag
