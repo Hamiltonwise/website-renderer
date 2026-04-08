@@ -442,7 +442,7 @@ export async function resolvePostBlocks(
       let controls = '';
       if (totalPages > 1) {
         if (shortcode.paginate === 'load-more') {
-          controls = `<div data-alloro-pagination-controls style="text-align:center;margin-top:2rem;"><button data-alloro-load-more style="padding:12px 32px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;font-size:1rem;">Load More</button></div>`;
+          controls = `<div data-alloro-pagination-controls style="text-align:center;margin-top:2rem;"><button data-alloro-load-more style="padding:12px 32px;border:1px solid #d1d5db;border-radius:9999px;background:white;cursor:pointer;font-size:1rem;">Load More</button></div>`;
         } else if (shortcode.paginate === 'numbered') {
           controls = `<nav data-alloro-pagination-controls data-alloro-numbered-pagination style="display:flex;justify-content:center;gap:8px;margin-top:2rem;"></nav>`;
         } else if (shortcode.paginate === 'infinite') {

@@ -54,7 +54,7 @@ function fetchPage(apiBase,page,perPage,filters){
 }
 
 function getGrid(container){return container}
-function getTpl(container){try{return atob(container.getAttribute('data-block-template')||'')}catch(e){return''}}
+function getTpl(container){try{var b=atob(container.getAttribute('data-block-template')||'');var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder().decode(u)}catch(e){return''}}
 
 function showError(target,retryFn){
   var d=document.createElement('div');
