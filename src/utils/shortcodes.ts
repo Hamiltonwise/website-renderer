@@ -19,12 +19,15 @@ export interface PostBlockShortcode {
   order_by: 'created_at' | 'title' | 'sort_order' | 'published_at';
   limit: number;
   offset: number;
+  paginate: 'none' | 'load-more' | 'numbered' | 'infinite';
+  per_page: number;
 }
 
 const SHORTCODE_REGEX = /\{\{\s*post_block\s+((?:[a-z_]+='[^']*'\s*)+)\}\}/g;
 const ATTR_REGEX = /([a-z_]+)='([^']*)'/g;
 
 const VALID_ORDER_BY = new Set(['created_at', 'title', 'sort_order', 'published_at']);
+const VALID_PAGINATE = new Set(['none', 'load-more', 'numbered', 'infinite']);
 
 /**
  * Parse all {{ post_block ... }} shortcodes from an HTML string.
@@ -66,8 +69,10 @@ export function parseShortcodes(html: string): PostBlockShortcode[] {
       exc_ids: attrs.exc_ids ? attrs.exc_ids.split(',').map((s) => s.trim()).filter(Boolean) : [],
       order: attrs.order === 'desc' ? 'desc' : 'asc',
       order_by: VALID_ORDER_BY.has(orderBy) ? orderBy as PostBlockShortcode['order_by'] : 'created_at',
-      limit: attrs.limit ? parseInt(attrs.limit, 10) || 10 : 10,
+      limit: attrs.limit !== undefined ? (parseInt(attrs.limit, 10) >= 0 ? parseInt(attrs.limit, 10) : 10) : 10,
       offset: attrs.offset ? parseInt(attrs.offset, 10) || 0 : 0,
+      paginate: VALID_PAGINATE.has(attrs.paginate) ? attrs.paginate as PostBlockShortcode['paginate'] : 'none',
+      per_page: attrs.per_page ? parseInt(attrs.per_page, 10) || 9 : (attrs.limit ? (parseInt(attrs.limit, 10) || 9) : 9),
     });
   }
 
@@ -237,6 +242,8 @@ export interface ReviewBlockShortcode {
   limit: number;
   offset: number;
   order: 'asc' | 'desc';
+  paginate: 'none' | 'load-more' | 'numbered' | 'infinite';
+  per_page: number;
 }
 
 const REVIEW_BLOCK_SHORTCODE_REGEX = /\{\{\s*review_block\s+((?:[a-z_]+='[^']*'\s*)+)\}\}/g;
@@ -267,9 +274,11 @@ export function parseReviewBlockShortcodes(html: string): ReviewBlockShortcode[]
       id: attrs.id,
       location: attrs.location || 'primary',
       min_rating: attrs.min_rating ? parseInt(attrs.min_rating, 10) || 1 : 1,
-      limit: attrs.limit ? parseInt(attrs.limit, 10) || 10 : 10,
+      limit: attrs.limit !== undefined ? (parseInt(attrs.limit, 10) >= 0 ? parseInt(attrs.limit, 10) : 10) : 10,
       offset: attrs.offset ? parseInt(attrs.offset, 10) || 0 : 0,
       order: attrs.order === 'asc' ? 'asc' : 'desc',
+      paginate: VALID_PAGINATE.has(attrs.paginate) ? attrs.paginate as ReviewBlockShortcode['paginate'] : 'none',
+      per_page: attrs.per_page ? parseInt(attrs.per_page, 10) || 6 : (attrs.limit ? (parseInt(attrs.limit, 10) || 6) : 6),
     });
   }
 

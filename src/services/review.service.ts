@@ -16,8 +16,10 @@ import {
   parseReviewBlockShortcodes,
   hasReviewBlockShortcodes,
   renderReviewBlockHtml,
+  escapeHtml,
   type ReviewBlockShortcode,
 } from '../utils/shortcodes';
+import { getPaginationScript } from '../utils/pagination-client';
 import crypto from 'crypto';
 
 const REVIEW_BLOCK_TTL = 300; // 5 minutes
@@ -133,6 +135,43 @@ async function fetchReviews(
 }
 
 /**
+ * Fetch total count of reviews matching filters, with Redis caching.
+ * Mirrors fetchReviews query logic but returns only the count.
+ */
+async function fetchReviewCount(
+  locationIds: number[],
+  sc: ReviewBlockShortcode
+): Promise<number> {
+  const redis = getRedis();
+  const filterHash = hashReviewFilters(sc, locationIds);
+  const cacheKey = `reviews-count:${filterHash}`;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return parseInt(cached, 10);
+  } catch {
+    // Cache miss
+  }
+
+  const db = getDb();
+  const result = await db('reviews')
+    .whereIn('location_id', locationIds)
+    .where('stars', '>=', sc.min_rating)
+    .count('* as total')
+    .first();
+
+  const total = result ? Number(result.total) : 0;
+
+  try {
+    await redis.set(cacheKey, String(total), 'EX', REVIEWS_TTL);
+  } catch {
+    // Cache write failure is non-fatal
+  }
+
+  return total;
+}
+
+/**
  * Resolve all {{ review_block }} shortcodes in the given HTML.
  */
 export async function resolveReviewBlocks(
@@ -149,11 +188,11 @@ export async function resolveReviewBlocks(
     return html;
   }
 
-  // Resolve project → org → locations
+  // Resolve project → org → locations (+ hostname for pagination API URL)
   const db = getDb();
   const project = await db('projects')
     .where('id', projectId)
-    .select('organization_id')
+    .select('organization_id', 'hostname', 'custom_domain')
     .first();
 
   if (!project?.organization_id) {
@@ -192,6 +231,7 @@ export async function resolveReviewBlocks(
   );
 
   let result = html;
+  let hasPagination = false;
 
   for (const sc of shortcodes) {
     const block = blockMap.get(sc.id);
@@ -219,8 +259,14 @@ export async function resolveReviewBlocks(
       locationIds = [loc.id];
     }
 
+    // For paginated mode, override limit/offset to fetch only the first page
+    const isPaginated = sc.paginate !== 'none';
+    const effectiveShortcode = isPaginated
+      ? { ...sc, limit: sc.per_page, offset: 0 }
+      : sc;
+
     // Fetch reviews
-    const reviews = await fetchReviews(locationIds, sc);
+    const reviews = await fetchReviews(locationIds, effectiveShortcode);
 
     if (reviews.length === 0) {
       result = result.replace(sc.raw, '');
@@ -252,7 +298,51 @@ export async function resolveReviewBlocks(
       renderReviewBlockHtml(template, review)
     );
 
-    result = result.replace(sc.raw, before + renderedReviews.join('\n') + after);
+    if (isPaginated) {
+      hasPagination = true;
+
+      // Calculate pagination metadata
+      const totalReviews = await fetchReviewCount(locationIds, sc);
+      const perPage = sc.per_page;
+      const totalPages = Math.ceil(totalReviews / perPage);
+
+      // Build filter string for the client JS
+      const filters = [
+        `location=${sc.location}`,
+        `min_rating=${sc.min_rating}`,
+        `order=${sc.order}`,
+      ].filter(Boolean).join('&');
+
+      // Encode the loop template for client-side rendering
+      const templateBase64 = Buffer.from(template).toString('base64');
+
+      // Resolve hostname for API URL
+      const apiHostname = project?.custom_domain || project?.hostname || '';
+
+      const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="review" data-paginate-mode="${sc.paginate}" data-per-page="${perPage}" data-total-posts="${totalReviews}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/reviews/${encodeURIComponent(apiHostname)}">${before}${renderedReviews.join('\n')}${after}</div>`;
+
+      // Add pagination controls
+      let controls = '';
+      if (totalPages > 1) {
+        if (sc.paginate === 'load-more') {
+          controls = `<div data-alloro-pagination-controls style="text-align:center;margin-top:2rem;"><button data-alloro-load-more style="padding:12px 32px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;font-size:1rem;">Load More</button></div>`;
+        } else if (sc.paginate === 'numbered') {
+          controls = `<nav data-alloro-pagination-controls data-alloro-numbered-pagination style="display:flex;justify-content:center;gap:8px;margin-top:2rem;"></nav>`;
+        } else if (sc.paginate === 'infinite') {
+          controls = `<div data-alloro-pagination-controls data-alloro-scroll-sentinel style="height:1px;"></div>`;
+        }
+      }
+
+      result = result.replace(sc.raw, paginatedHtml + controls);
+    } else {
+      result = result.replace(sc.raw, before + renderedReviews.join('\n') + after);
+    }
+  }
+
+  // Inject pagination client script if any review block uses pagination
+  if (hasPagination) {
+    const script = getPaginationScript();
+    result = result.replace('</body>', script + '</body>');
   }
 
   return result;

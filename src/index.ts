@@ -5,6 +5,7 @@ import 'express-async-errors';
 import express, { Request, Response, NextFunction } from 'express';
 import { siteRoute } from './routes/site';
 import { verifyDomainRoute } from './routes/verify-domain';
+import { apiRouter } from './routes/api';
 import { extractSubdomain } from './middleware/subdomain';
 import { getDb } from './lib/db';
 import { closeRedis } from './lib/redis';
@@ -18,6 +19,9 @@ app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 // Caddy on-demand TLS validation (must be before subdomain middleware)
 app.get('/verify-domain', verifyDomainRoute);
+
+// Public JSON API (must be before subdomain middleware — uses :hostname path param)
+app.use(apiRouter);
 
 // Extract subdomain, then render site
 app.use(extractSubdomain);

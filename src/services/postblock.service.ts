@@ -11,7 +11,8 @@
 
 import { getDb } from '../lib/db';
 import { getRedis } from '../lib/redis';
-import { parseShortcodes, hasPostBlockShortcodes, renderPostBlockHtml, type PostBlockShortcode } from '../utils/shortcodes';
+import { parseShortcodes, hasPostBlockShortcodes, renderPostBlockHtml, escapeHtml, type PostBlockShortcode } from '../utils/shortcodes';
+import { getPaginationScript } from '../utils/pagination-client';
 import type { Section } from '../types';
 import crypto from 'crypto';
 
@@ -236,6 +237,77 @@ async function fetchPosts(
 }
 
 /**
+ * Fetch total count of posts matching a shortcode's filters, with Redis caching.
+ * Mirrors fetchPosts query logic but returns only the count.
+ */
+async function fetchPostCount(
+  projectId: string,
+  postTypeSlug: string,
+  shortcode: PostBlockShortcode
+): Promise<number> {
+  const redis = getRedis();
+  const filterHash = hashFilters(shortcode);
+  const cacheKey = `posts-count:${projectId}:${postTypeSlug}:${filterHash}`;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return parseInt(cached, 10);
+  } catch {
+    // Cache miss
+  }
+
+  const db = getDb();
+
+  let query = db('posts')
+    .join('post_types', 'posts.post_type_id', 'post_types.id')
+    .where({
+      'posts.project_id': projectId,
+      'posts.status': 'published',
+      'post_types.slug': postTypeSlug,
+    })
+    .count('* as total');
+
+  if (shortcode.ids.length > 0) {
+    query = query.whereIn('posts.slug', shortcode.ids);
+  }
+
+  if (shortcode.exc_ids.length > 0) {
+    query = query.whereNotIn('posts.slug', shortcode.exc_ids);
+  }
+
+  if (shortcode.cats.length > 0) {
+    query = query.whereExists(function () {
+      this.select(db.raw('1'))
+        .from('post_category_assignments')
+        .join('post_categories', 'post_category_assignments.category_id', 'post_categories.id')
+        .whereRaw('post_category_assignments.post_id = posts.id')
+        .whereIn('post_categories.slug', shortcode.cats);
+    });
+  }
+
+  if (shortcode.tags.length > 0) {
+    query = query.whereExists(function () {
+      this.select(db.raw('1'))
+        .from('post_tag_assignments')
+        .join('post_tags', 'post_tag_assignments.tag_id', 'post_tags.id')
+        .whereRaw('post_tag_assignments.post_id = posts.id')
+        .whereIn('post_tags.slug', shortcode.tags);
+    });
+  }
+
+  const result = await query.first();
+  const total = result ? Number(result.total) : 0;
+
+  try {
+    await redis.set(cacheKey, String(total), 'EX', POSTS_TTL);
+  } catch {
+    // Cache write failure is non-fatal
+  }
+
+  return total;
+}
+
+/**
  * Resolve all {{ post_block }} shortcodes in the given HTML.
  * Returns the HTML with shortcodes replaced by rendered post block content.
  *
@@ -268,6 +340,7 @@ export async function resolvePostBlocks(
 
   // Process each shortcode
   let result = html;
+  let hasPagination = false;
 
   for (const shortcode of shortcodes) {
     const block = blockMap.get(shortcode.id);
@@ -278,8 +351,14 @@ export async function resolvePostBlocks(
       continue;
     }
 
+    // For paginated mode, override limit/offset to fetch only the first page
+    const isPaginated = shortcode.paginate !== 'none';
+    const effectiveShortcode = isPaginated
+      ? { ...shortcode, limit: shortcode.per_page, offset: 0 }
+      : shortcode;
+
     // Fetch posts matching this shortcode's filters
-    const posts = await fetchPosts(projectId, block.post_type_slug, shortcode);
+    const posts = await fetchPosts(projectId, block.post_type_slug, effectiveShortcode);
 
     if (posts.length === 0) {
       // No posts — render empty
@@ -334,7 +413,55 @@ export async function resolvePostBlocks(
       })
     );
 
-    result = result.replace(shortcode.raw, before + renderedPosts.join('\n') + after);
+    if (isPaginated) {
+      hasPagination = true;
+
+      // Calculate pagination metadata
+      const totalPosts = await fetchPostCount(projectId, block.post_type_slug, shortcode);
+      const perPage = shortcode.per_page;
+      const totalPages = Math.ceil(totalPosts / perPage);
+
+      // Build filter string for the client JS
+      const filters = [
+        shortcode.cats.length ? `cats=${shortcode.cats.join(',')}` : '',
+        shortcode.tags.length ? `tags=${shortcode.tags.join(',')}` : '',
+        shortcode.ids.length ? `ids=${shortcode.ids.join(',')}` : '',
+        shortcode.exc_ids.length ? `exc_ids=${shortcode.exc_ids.join(',')}` : '',
+        `order=${shortcode.order}`,
+        `order_by=${shortcode.order_by}`,
+      ].filter(Boolean).join('&');
+
+      // Encode the loop template for client-side rendering
+      const templateBase64 = Buffer.from(template).toString('base64');
+
+      // Resolve hostname for API URL
+      const project = await getDb()('projects').where('id', projectId).select('hostname', 'custom_domain').first();
+      const apiHostname = project?.custom_domain || project?.hostname || '';
+
+      const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="post" data-paginate-mode="${shortcode.paginate}" data-post-type="${block.post_type_slug}" data-per-page="${perPage}" data-total-posts="${totalPosts}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/posts/${encodeURIComponent(apiHostname)}/${block.post_type_slug}">${before}${renderedPosts.join('\n')}${after}</div>`;
+
+      // Add pagination controls
+      let controls = '';
+      if (totalPages > 1) {
+        if (shortcode.paginate === 'load-more') {
+          controls = `<div data-alloro-pagination-controls style="text-align:center;margin-top:2rem;"><button data-alloro-load-more style="padding:12px 32px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;font-size:1rem;">Load More</button></div>`;
+        } else if (shortcode.paginate === 'numbered') {
+          controls = `<nav data-alloro-pagination-controls data-alloro-numbered-pagination style="display:flex;justify-content:center;gap:8px;margin-top:2rem;"></nav>`;
+        } else if (shortcode.paginate === 'infinite') {
+          controls = `<div data-alloro-pagination-controls data-alloro-scroll-sentinel style="height:1px;"></div>`;
+        }
+      }
+
+      result = result.replace(shortcode.raw, paginatedHtml + controls);
+    } else {
+      result = result.replace(shortcode.raw, before + renderedPosts.join('\n') + after);
+    }
+  }
+
+  // Inject pagination client script if any post block uses pagination
+  if (hasPagination) {
+    const script = getPaginationScript();
+    result = result.replace('</body>', script + '</body>');
   }
 
   return result;
