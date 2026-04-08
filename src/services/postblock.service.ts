@@ -435,8 +435,8 @@ export async function resolvePostBlocks(
       const templateBase64 = Buffer.from(template).toString('base64');
 
       // Resolve hostname for API URL
-      const project = await getDb()('projects').where('id', projectId).select('hostname', 'custom_domain').first();
-      const apiHostname = project?.custom_domain || project?.hostname || '';
+      const project = await getDb()('projects').where('id', projectId).select('generated_hostname', 'custom_domain').first();
+      const apiHostname = project?.custom_domain || project?.generated_hostname || '';
 
       const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="post" data-paginate-mode="${shortcode.paginate}" data-post-type="${block.post_type_slug}" data-per-page="${perPage}" data-total-posts="${totalPosts}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/posts/${encodeURIComponent(apiHostname)}/${block.post_type_slug}">${before}${renderedPosts.join('\n')}${after}</div>`;
 

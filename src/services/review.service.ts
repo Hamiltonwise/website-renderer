@@ -192,7 +192,7 @@ export async function resolveReviewBlocks(
   const db = getDb();
   const project = await db('projects')
     .where('id', projectId)
-    .select('organization_id', 'hostname', 'custom_domain')
+    .select('organization_id', 'generated_hostname', 'custom_domain')
     .first();
 
   if (!project?.organization_id) {
@@ -317,7 +317,7 @@ export async function resolveReviewBlocks(
       const templateBase64 = Buffer.from(template).toString('base64');
 
       // Resolve hostname for API URL
-      const apiHostname = project?.custom_domain || project?.hostname || '';
+      const apiHostname = project?.custom_domain || project?.generated_hostname || '';
 
       const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="review" data-paginate-mode="${sc.paginate}" data-per-page="${perPage}" data-total-posts="${totalReviews}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/reviews/${encodeURIComponent(apiHostname)}">${before}${renderedReviews.join('\n')}${after}</div>`;
 
