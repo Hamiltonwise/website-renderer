@@ -319,9 +319,7 @@ export async function resolveReviewBlocks(
       // Resolve hostname for API URL
       const apiHostname = project?.custom_domain || project?.generated_hostname || '';
 
-      const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="review" data-paginate-mode="${sc.paginate}" data-per-page="${perPage}" data-total-posts="${totalReviews}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/reviews/${encodeURIComponent(apiHostname)}">${before}${renderedReviews.join('\n')}${after}</div>`;
-
-      // Add pagination controls
+      // Build pagination controls
       let controls = '';
       if (totalPages > 1) {
         if (sc.paginate === 'load-more') {
@@ -333,7 +331,24 @@ export async function resolveReviewBlocks(
         }
       }
 
-      result = result.replace(sc.raw, paginatedHtml + controls);
+      // Paginated container uses display:contents so it's transparent to grid layout
+      const gridContent = `<div data-alloro-paginated="true" data-paginate-type="review" data-paginate-mode="${sc.paginate}" data-per-page="${perPage}" data-total-posts="${totalReviews}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/reviews/${encodeURIComponent(apiHostname)}" style="display:contents">${renderedReviews.join('\n')}</div>`;
+
+      // Insert controls inside the section wrapper (after the grid close)
+      let afterWithControls = after;
+      if (controls && after) {
+        const firstCloseIdx = after.indexOf('</div>');
+        if (firstCloseIdx !== -1) {
+          const insertPoint = firstCloseIdx + '</div>'.length;
+          afterWithControls = after.slice(0, insertPoint) + controls + after.slice(insertPoint);
+        } else {
+          afterWithControls = after + controls;
+        }
+      } else if (controls) {
+        afterWithControls = controls;
+      }
+
+      result = result.replace(sc.raw, before + gridContent + afterWithControls);
     } else {
       result = result.replace(sc.raw, before + renderedReviews.join('\n') + after);
     }

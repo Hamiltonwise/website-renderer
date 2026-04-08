@@ -53,7 +53,7 @@ function fetchPage(apiBase,page,perPage,filters){
   return fetch(url).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()});
 }
 
-function getGrid(container){return container.children[0]||container}
+function getGrid(container){return container}
 function getTpl(container){try{return atob(container.getAttribute('data-block-template')||'')}catch(e){return''}}
 
 function showError(target,retryFn){
@@ -69,8 +69,10 @@ function showError(target,retryFn){
 
 /* ---- mode handlers ---- */
 
+function findControls(container,sel){var p=container.parentElement;while(p){var c=p.querySelector(sel);if(c)return c;p=p.parentElement}return document.querySelector(sel)}
+
 function initLoadMore(container){
-  var ctrl=container.nextElementSibling;
+  var ctrl=findControls(container,'[data-alloro-pagination-controls]');
   if(!ctrl)return;
   var btn=ctrl.querySelector('[data-alloro-load-more]');
   if(!btn)return;
@@ -109,8 +111,7 @@ function initLoadMore(container){
 }
 
 function initNumbered(container){
-  var nav=container.nextElementSibling;
-  if(!nav||!nav.hasAttribute('data-alloro-numbered-pagination'))nav=document.querySelector('[data-alloro-numbered-pagination]');
+  var nav=findControls(container,'[data-alloro-numbered-pagination]');
   if(!nav)return;
   var tpl=getTpl(container),type=container.getAttribute('data-paginate-type')||'post';
   var grid=getGrid(container);
@@ -180,8 +181,8 @@ function initNumbered(container){
 }
 
 function initInfinite(container){
-  var sentinel=container.nextElementSibling;
-  if(!sentinel||!sentinel.hasAttribute('data-alloro-scroll-sentinel'))return;
+  var sentinel=findControls(container,'[data-alloro-scroll-sentinel]');
+  if(!sentinel)return;
   var tpl=getTpl(container),type=container.getAttribute('data-paginate-type')||'post';
   var grid=getGrid(container);
   var perPage=container.getAttribute('data-per-page')||'9';

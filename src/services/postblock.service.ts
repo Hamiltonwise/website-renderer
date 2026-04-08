@@ -438,9 +438,7 @@ export async function resolvePostBlocks(
       const project = await getDb()('projects').where('id', projectId).select('generated_hostname', 'custom_domain').first();
       const apiHostname = project?.custom_domain || project?.generated_hostname || '';
 
-      const paginatedHtml = `<div data-alloro-paginated="true" data-paginate-type="post" data-paginate-mode="${shortcode.paginate}" data-post-type="${block.post_type_slug}" data-per-page="${perPage}" data-total-posts="${totalPosts}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/posts/${encodeURIComponent(apiHostname)}/${block.post_type_slug}">${before}${renderedPosts.join('\n')}${after}</div>`;
-
-      // Add pagination controls
+      // Build pagination controls (inside the section, after the grid)
       let controls = '';
       if (totalPages > 1) {
         if (shortcode.paginate === 'load-more') {
@@ -452,7 +450,28 @@ export async function resolvePostBlocks(
         }
       }
 
-      result = result.replace(shortcode.raw, paginatedHtml + controls);
+      // Structure: before (section wrapper + grid open) → paginated container with posts → grid close + controls + section close
+      // The data-alloro-paginated div wraps ONLY the post cards so client JS can append to it
+      // Controls go between the grid close and section close so they inherit the section background
+      const gridContent = `<div data-alloro-paginated="true" data-paginate-type="post" data-paginate-mode="${shortcode.paginate}" data-post-type="${block.post_type_slug}" data-per-page="${perPage}" data-total-posts="${totalPosts}" data-total-pages="${totalPages}" data-current-page="1" data-filters="${escapeHtml(filters)}" data-block-template="${templateBase64}" data-api-base="/api/posts/${encodeURIComponent(apiHostname)}/${block.post_type_slug}" style="display:contents">${renderedPosts.join('\n')}</div>`;
+
+      // Insert controls before the closing tags of the section (inside `after`)
+      // `after` typically closes the grid div + section wrapper, e.g. "</div>\n  </div>\n</div>"
+      // We insert controls after the first closing tag (grid close) but before the rest
+      let afterWithControls = after;
+      if (controls && after) {
+        const firstCloseIdx = after.indexOf('</div>');
+        if (firstCloseIdx !== -1) {
+          const insertPoint = firstCloseIdx + '</div>'.length;
+          afterWithControls = after.slice(0, insertPoint) + controls + after.slice(insertPoint);
+        } else {
+          afterWithControls = after + controls;
+        }
+      } else if (controls) {
+        afterWithControls = controls;
+      }
+
+      result = result.replace(shortcode.raw, before + gridContent + afterWithControls);
     } else {
       result = result.replace(shortcode.raw, before + renderedPosts.join('\n') + after);
     }
