@@ -135,24 +135,102 @@ function wrapPostContent(html: string): string {
   return `<style>${POST_CONTENT_STYLES}</style><div class="alloro-pc">${html}</div>`;
 }
 
+// =====================================================================
+// CONDITIONAL RENDERING ({{if}} / {{if_not}} / {{endif}})
+// =====================================================================
+
+/**
+ * Post token data shape used for conditional rendering and token replacement.
+ */
+export interface PostTokenData {
+  title: string;
+  slug: string;
+  url: string;
+  content: string;
+  excerpt: string | null;
+  featured_image: string | null;
+  custom_fields: Record<string, unknown>;
+  categories: string;
+  tags: string;
+  created_at: string;
+  updated_at: string;
+  published_at: string;
+}
+
+/**
+ * Strip {{if post.X}}...{{endif}} and {{if_not post.X}}...{{endif}} blocks
+ * based on whether the named field is empty.
+ *
+ * Syntax:
+ *   {{if post.featured_image}}<img src="{{post.featured_image}}"/>{{endif}}
+ *   {{if_not post.featured_image}}<div class="fallback"></div>{{endif}}
+ *   {{if post.custom.video_url}}...{{endif}}
+ *
+ * Empty definition: null, undefined, or empty string "". Explicitly NOT
+ * empty: "0", 0, false, whitespace-only strings, empty arrays/objects.
+ *
+ * Flat only — nested conditionals are detected; on detection the ENTIRE
+ * input HTML is returned unchanged and a warning is logged. Loud-by-design
+ * so authors see the bug instead of silent mis-rendering.
+ *
+ * NOTE: This function is duplicated in two other locations. Keep in sync:
+ *   - alloro/src/controllers/user-website/user-website-services/shortcodeResolver.service.ts
+ *   - alloro/frontend/src/components/Admin/PostBlocksTab.tsx
+ */
+const CONDITIONAL_BLOCK_RE = /\{\{\s*(if|if_not)\s+post\.([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*endif\s*\}\}/g;
+const ORPHAN_CONDITIONAL_RE = /\{\{\s*(?:if|if_not)\s+[^}]*\}\}|\{\{\s*endif\s*\}\}/g;
+const NESTED_PROBE_RE = /\{\{\s*(?:if|if_not)\s+/;
+
+function isEmptyField(value: unknown): boolean {
+  return value === null || value === undefined || value === '';
+}
+
+function resolvePostField(post: PostTokenData, field: string): unknown {
+  if (field.startsWith('custom.')) {
+    const slug = field.slice('custom.'.length);
+    return post.custom_fields ? post.custom_fields[slug] : undefined;
+  }
+  return (post as unknown as Record<string, unknown>)[field];
+}
+
+export function processConditionals(html: string, post: PostTokenData): string {
+  if (!html.includes('{{if')) return html;
+
+  // Nesting detection pass. If any block body contains another {{if}}
+  // or {{if_not}}, abort loudly and return the input untouched.
+  for (const probe of html.matchAll(CONDITIONAL_BLOCK_RE)) {
+    if (NESTED_PROBE_RE.test(probe[3])) {
+      console.warn(
+        `[shortcodes] Nested conditional detected in post template (flat-only in v1). ` +
+          `Field: post.${probe[2]}. Block: ${probe[0].slice(0, 200)}`
+      );
+      return html;
+    }
+  }
+
+  // Strip-or-unwrap pass.
+  let result = html.replace(CONDITIONAL_BLOCK_RE, (_match, kind: string, field: string, body: string) => {
+    const value = resolvePostField(post, field);
+    const empty = isEmptyField(value);
+    const keep = kind === 'if' ? !empty : empty;
+    return keep ? body : '';
+  });
+
+  // Orphan cleanup: strip any stray markers left by malformed input.
+  result = result.replace(ORPHAN_CONDITIONAL_RE, '');
+
+  return result;
+}
+
 export function renderPostBlockHtml(
   blockHtml: string,
-  post: {
-    title: string;
-    slug: string;
-    url: string;
-    content: string;
-    excerpt: string | null;
-    featured_image: string | null;
-    custom_fields: Record<string, unknown>;
-    categories: string;
-    tags: string;
-    created_at: string;
-    updated_at: string;
-    published_at: string;
-  }
+  post: PostTokenData
 ): string {
-  let html = blockHtml
+  // Conditional rendering pass first — strip {{if}}/{{if_not}} blocks
+  // whose field is empty, before any token replacement runs.
+  const processed = processConditionals(blockHtml, post);
+
+  let html = processed
     .replace(/\{\{post\.title\}\}/g, escapeHtml(post.title))
     .replace(/\{\{post\.slug\}\}/g, escapeHtml(post.slug))
     .replace(/\{\{post\.url\}\}/g, escapeHtml(post.url))
