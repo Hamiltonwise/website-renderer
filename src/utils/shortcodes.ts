@@ -166,14 +166,17 @@ export interface PostTokenData {
  *   {{if_not post.featured_image}}<div class="fallback"></div>{{endif}}
  *   {{if post.custom.video_url}}...{{endif}}
  *
- * Empty definition: null, undefined, or empty string "". Explicitly NOT
- * empty: "0", 0, false, whitespace-only strings, empty arrays/objects.
+ * Empty definition: null, undefined, empty string "", or empty array [].
+ * Explicitly NOT empty: "0", 0, false, whitespace-only strings, non-empty
+ * arrays, objects.
  *
  * Flat only — nested conditionals are detected; on detection the ENTIRE
  * input HTML is returned unchanged and a warning is logged. Loud-by-design
  * so authors see the bug instead of silent mis-rendering.
  *
- * NOTE: This function is duplicated in two other locations. Keep in sync:
+ * NOTE: This function is duplicated in two other locations. Keep in sync.
+ * The gallery-loop pass (renderGalleryLoops + processItemConditionals
+ * below) must ALSO stay in sync across all three:
  *   - alloro/src/controllers/user-website/user-website-services/shortcodeResolver.service.ts
  *   - alloro/frontend/src/components/Admin/PostBlocksTab.tsx
  */
@@ -182,7 +185,9 @@ const ORPHAN_CONDITIONAL_RE = /\{\{\s*(?:if|if_not)\s+[^}]*\}\}|\{\{\s*endif\s*\
 const NESTED_PROBE_RE = /\{\{\s*(?:if|if_not)\s+/;
 
 function isEmptyField(value: unknown): boolean {
-  return value === null || value === undefined || value === '';
+  if (value === null || value === undefined || value === '') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
 }
 
 function resolvePostField(post: PostTokenData, field: string): unknown {
@@ -222,13 +227,107 @@ export function processConditionals(html: string, post: PostTokenData): string {
   return result;
 }
 
+// =====================================================================
+// Gallery Loop Rendering ({{start_gallery_loop field='X'}}...{{end_gallery_loop}})
+//
+// For a given custom field that holds an array of
+//   { url: string; link?: string; alt?: string; caption?: string }
+// items, emit the body once per item, with {{item.url|link|alt|caption}}
+// replaced and {{if item.X}}/{{if_not item.X}} resolved.
+//
+// Runs BEFORE processConditionals so the inner {{if item.link}} blocks
+// inside a gallery body are resolved into flat HTML first — this
+// preserves the outer processConditionals' flat-only invariant for the
+// surrounding {{if post.custom.<slug>}} block.
+//
+// Empty or missing arrays → block replaced with "". Missing item keys →
+// empty escaped string.
+// =====================================================================
+
+const GALLERY_LOOP_RE =
+  /\{\{\s*start_gallery_loop\s+field='([a-z0-9_-]+)'\s*\}\}([\s\S]*?)\{\{\s*end_gallery_loop\s*\}\}/gi;
+const ITEM_CONDITIONAL_BLOCK_RE =
+  /\{\{\s*(if|if_not)\s+item\.([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*endif\s*\}\}/g;
+const ITEM_ORPHAN_CONDITIONAL_RE =
+  /\{\{\s*(?:if|if_not)\s+item\.[^}]*\}\}|\{\{\s*endif\s*\}\}/g;
+
+function processItemConditionals(body: string, item: Record<string, unknown>): string {
+  if (!body.includes('{{if')) return body;
+
+  for (const probe of body.matchAll(ITEM_CONDITIONAL_BLOCK_RE)) {
+    if (NESTED_PROBE_RE.test(probe[3])) {
+      console.warn(
+        `[shortcodes] Nested item conditional detected in gallery loop (flat-only). ` +
+          `Field: item.${probe[2]}. Block: ${probe[0].slice(0, 200)}`
+      );
+      return body;
+    }
+  }
+
+  let result = body.replace(
+    ITEM_CONDITIONAL_BLOCK_RE,
+    (_match, kind: string, field: string, inner: string) => {
+      const value = (item as Record<string, unknown>)[field];
+      const empty = isEmptyField(value);
+      const keep = kind === 'if' ? !empty : empty;
+      return keep ? inner : '';
+    }
+  );
+
+  result = result.replace(ITEM_ORPHAN_CONDITIONAL_RE, '');
+  return result;
+}
+
+export function renderGalleryLoops(
+  html: string,
+  customFields: Record<string, unknown>
+): string {
+  if (!html.includes('start_gallery_loop')) return html;
+
+  return html.replace(
+    GALLERY_LOOP_RE,
+    (_match, slug: string, body: string) => {
+      const raw = customFields ? customFields[slug] : undefined;
+      if (!Array.isArray(raw) || raw.length === 0) return '';
+
+      const perItem = raw.map((item) => {
+        const safeItem =
+          item && typeof item === 'object' && !Array.isArray(item)
+            ? (item as Record<string, unknown>)
+            : {};
+        let out = processItemConditionals(body, safeItem);
+        const get = (key: string): string => {
+          const v = safeItem[key];
+          if (v === null || v === undefined) return '';
+          if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+            return '';
+          }
+          return escapeHtml(String(v));
+        };
+        out = out.replace(/\{\{\s*item\.url\s*\}\}/g, get('url'));
+        out = out.replace(/\{\{\s*item\.link\s*\}\}/g, get('link'));
+        out = out.replace(/\{\{\s*item\.alt\s*\}\}/g, get('alt'));
+        out = out.replace(/\{\{\s*item\.caption\s*\}\}/g, get('caption'));
+        return out;
+      });
+
+      return perItem.join('\n');
+    }
+  );
+}
+
 export function renderPostBlockHtml(
   blockHtml: string,
   post: PostTokenData
 ): string {
-  // Conditional rendering pass first — strip {{if}}/{{if_not}} blocks
-  // whose field is empty, before any token replacement runs.
-  const processed = processConditionals(blockHtml, post);
+  // Step A: resolve gallery loops FIRST so any inner {{if item.X}} is
+  // fully resolved into flat HTML before processConditionals runs — the
+  // outer conditional engine is flat-only and would otherwise bail.
+  const afterGallery = renderGalleryLoops(blockHtml, post.custom_fields || {});
+
+  // Step B: strip {{if post.X}}/{{if_not post.X}} blocks whose field is
+  // empty, before any token replacement runs.
+  const processed = processConditionals(afterGallery, post);
 
   let html = processed
     .replace(/\{\{post\.title\}\}/g, escapeHtml(post.title))
@@ -250,11 +349,19 @@ export function renderPostBlockHtml(
     return buildVideoEmbed(url);
   });
 
-  // Replace {{post.custom.<slug>}} tokens with custom field values
-  // Newlines are converted to <br> after escaping so textarea content renders with line breaks
+  // Replace {{post.custom.<slug>}} tokens with custom field values.
+  // Scalar-only: the gallery-loop pass in Step A consumed valid {{item.*}}
+  // tokens, so any non-primitive value reaching this replacement is either
+  // an unresolved gallery referenced as a scalar or a malformed value.
+  // Emit "" rather than coercing (avoids `[object Object]` / `,,` output).
+  // Newlines are converted to <br> after escaping so textarea content
+  // renders with line breaks.
   html = html.replace(/\{\{post\.custom\.([a-z0-9_]+)\}\}/g, (_match, fieldSlug: string) => {
     const value = post.custom_fields[fieldSlug];
     if (value === undefined || value === null) return '';
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      return '';
+    }
     return escapeHtml(String(value)).replace(/\n/g, '<br>');
   });
 
