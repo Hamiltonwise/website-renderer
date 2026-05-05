@@ -51,6 +51,42 @@ function getApiBaseUrl(): string {
   return process.env.API_BASE_URL || 'https://app.getalloro.com';
 }
 
+const RYBBIT_API_URL = process.env.RYBBIT_API_URL || 'https://analytics.getalloro.com';
+
+function buildIntegrationScript(platform: string, metadata: Record<string, any>): string | null {
+  if (platform === 'rybbit' && metadata.siteId) {
+    return `<script src="${RYBBIT_API_URL}/api/script.js" async data-site-id="${metadata.siteId}"></script>`;
+  }
+  if (platform === 'clarity' && metadata.projectId) {
+    const pid = metadata.projectId;
+    return `<script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window, document, "clarity", "script", "${pid}");</script>`;
+  }
+  return null;
+}
+
+async function getIntegrationScripts(projectId: string): Promise<string> {
+  if (process.env.INTEGRATIONS_SCRIPT_INJECTION !== 'true') return '';
+
+  try {
+    const db = getDb();
+    const rows = await db('website_builder.website_integrations')
+      .select('platform', 'metadata')
+      .where({ project_id: projectId, status: 'active' })
+      .whereIn('type', ['script_injection', 'hybrid']);
+
+    const scripts: string[] = [];
+    for (const row of rows) {
+      const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+      const script = buildIntegrationScript(row.platform, meta);
+      if (script) scripts.push(script);
+    }
+    return scripts.join('\n');
+  } catch (err) {
+    console.warn('[site] Failed to load integration scripts, falling back to header_footer_code:', err);
+    return '';
+  }
+}
+
 async function assembleHtml(project: Project, page: Page): Promise<string> {
   const db = getDb();
 
@@ -95,6 +131,12 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
     html = injectSeoMeta(html, seoData);
   }
 
+  // Inject integration-managed tracking scripts (Rybbit, Clarity)
+  const integrationScripts = await getIntegrationScripts(project.id);
+  if (integrationScripts) {
+    html = html.replace(/<\/head>/i, `${integrationScripts}\n</head>`);
+  }
+
   // Tailwind CSS: compile for published, Play CDN for drafts
   html = await processTailwindCSS(html, page.status === 'draft');
 
@@ -128,6 +170,12 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
   const seoData = page.seo_data as SeoData | null;
   if (seoData) {
     html = injectSeoMeta(html, seoData);
+  }
+
+  // Inject integration-managed tracking scripts (Rybbit, Clarity)
+  const integrationScripts = await getIntegrationScripts(project.id);
+  if (integrationScripts) {
+    html = html.replace(/<\/head>/i, `${integrationScripts}\n</head>`);
   }
 
   // Inject code snippets (tracking scripts, analytics, etc.)
