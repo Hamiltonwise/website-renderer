@@ -34,8 +34,12 @@ export interface Project {
   user_id: string;
   organization_id: number | null;
   generated_hostname: string;
+  custom_domain: string | null;
+  custom_domain_alt: string | null;
   status: ProjectStatus;
   selected_place_id: string | null;
+  selected_place_ids: string[] | string | null;
+  primary_place_id: string | null;
   selected_website_url: string | null;
   wrapper: string;
   header: string;

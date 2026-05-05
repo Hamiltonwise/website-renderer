@@ -11,6 +11,11 @@ import crypto from 'crypto';
 import { getDb } from '../lib/db';
 import { getRedis } from '../lib/redis';
 import { getProjectByHostname, getProjectByCustomDomain } from '../services/project.service';
+import {
+  fetchReviewCount,
+  fetchReviews,
+  getProjectReviewScope,
+} from '../services/review.service';
 import type { Project } from '../types';
 
 const API_CACHE_TTL = 120; // 2 minutes
@@ -90,7 +95,7 @@ async function postsHandler(req: Request, res: Response): Promise<void> {
 
   const page = clamp(parseInt(req.query.page as string, 10) || 1, 1, Infinity);
   const perPage = clamp(parseInt(req.query.per_page as string, 10) || 9, 1, 50);
-  const order = req.query.order === 'asc' ? 'asc' : 'desc';
+  const order: 'asc' | 'desc' = req.query.order === 'asc' ? 'asc' : 'desc';
   const orderBy = ['title', 'created_at', 'updated_at', 'published_at', 'sort_order'].includes(req.query.order_by as string)
     ? (req.query.order_by as string)
     : 'created_at';
@@ -280,53 +285,27 @@ async function reviewsHandler(req: Request, res: Response): Promise<void> {
 
   const page = clamp(parseInt(req.query.page as string, 10) || 1, 1, Infinity);
   const perPage = clamp(parseInt(req.query.per_page as string, 10) || 6, 1, 50);
-  const order = req.query.order === 'asc' ? 'asc' : 'desc';
+  const order: 'asc' | 'desc' = req.query.order === 'asc' ? 'asc' : 'desc';
   const minRating = clamp(parseInt(req.query.min_rating as string, 10) || 1, 1, 5);
   const locationParam = (req.query.location as string) || 'primary';
 
-  // Resolve organization → locations
-  const db = getDb();
+  const scope = await getProjectReviewScope(project);
 
-  if (!project.organization_id) {
-    res.status(404).json({ error: 'No organization associated with this project' });
-    return;
-  }
-
-  const locationsResult = await db.raw(
-    'SELECT id, name, domain, is_primary FROM public.locations WHERE organization_id = ?',
-    [project.organization_id]
-  );
-  const locationRows: { id: number; name: string; domain: string | null; is_primary: boolean }[] =
-    locationsResult.rows || locationsResult;
-
-  if (locationRows.length === 0) {
+  if (scope.locationIds.length === 0 && scope.placeIds.length === 0) {
     res.json({ reviews: [], total: 0, page, per_page: perPage, total_pages: 0 });
     return;
-  }
-
-  // Resolve location IDs from param
-  let locationIds: number[];
-
-  if (locationParam === 'all') {
-    locationIds = locationRows.map((l) => l.id);
-  } else if (locationParam === 'primary') {
-    const loc = locationRows.find((l) => l.is_primary) || locationRows[0];
-    locationIds = [loc.id];
-  } else {
-    const loc = locationRows.find(
-      (l) => l.name === locationParam || l.domain === locationParam
-    );
-    if (!loc) {
-      res.json({ reviews: [], total: 0, page, per_page: perPage, total_pages: 0 });
-      return;
-    }
-    locationIds = [loc.id];
   }
 
   // Cache check
   const redis = getRedis();
   const cacheKey = `api:reviews:${project.id}:${hashParams([
-    locationIds.join(','), String(page), String(perPage), order, String(minRating),
+    scope.locationIds.join(','),
+    scope.placeIds.join(','),
+    locationParam,
+    String(page),
+    String(perPage),
+    order,
+    String(minRating),
   ])}`;
 
   try {
@@ -339,34 +318,18 @@ async function reviewsHandler(req: Request, res: Response): Promise<void> {
     // Cache miss or Redis down — fall through to DB
   }
 
-  // Total count
-  const countResult = await db('reviews')
-    .whereIn('location_id', locationIds)
-    .where('stars', '>=', minRating)
-    .count('id as total')
-    .first();
-  const total = parseInt(String(countResult?.total ?? '0'), 10);
-  const totalPages = Math.ceil(total / perPage);
-
-  // Data query
   const offset = (page - 1) * perPage;
-  const reviews = await db('reviews')
-    .whereIn('location_id', locationIds)
-    .where('stars', '>=', minRating)
-    .orderBy('review_created_at', order)
-    .limit(perPage)
-    .offset(offset)
-    .select(
-      'stars',
-      'text',
-      'reviewer_name',
-      'reviewer_photo_url',
-      'is_anonymous',
-      'review_created_at',
-      'has_reply',
-      'reply_text',
-      'reply_date'
-    );
+  const filters = {
+    min_rating: minRating,
+    limit: perPage,
+    offset,
+    order,
+  };
+  const [total, reviews] = await Promise.all([
+    fetchReviewCount(scope, filters),
+    fetchReviews(scope, filters),
+  ]);
+  const totalPages = Math.ceil(total / perPage);
 
   const payload = {
     reviews,

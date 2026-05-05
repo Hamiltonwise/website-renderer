@@ -4,8 +4,8 @@
  * Resolves {{ review_block }} shortcodes at runtime:
  * 1. Scans HTML for review block shortcodes
  * 2. Fetches review block templates from DB (via Redis cache)
- * 3. Resolves project → org → locations
- * 4. Fetches reviews from local DB (via Redis cache)
+ * 3. Resolves project → org locations + selected Google place IDs
+ * 4. Fetches visible reviews from local DB (via Redis cache)
  * 5. Renders review data into block HTML with loop markers
  * 6. Replaces shortcodes with rendered output
  */
@@ -42,15 +42,97 @@ interface ReviewRow {
   reply_date: string | Date | null;
 }
 
-function hashReviewFilters(sc: ReviewBlockShortcode, locationIds: number[]): string {
+export interface ReviewScopeProject {
+  id: string;
+  organization_id: number | null;
+  selected_place_id?: string | null;
+  selected_place_ids?: string[] | string | null;
+  primary_place_id?: string | null;
+}
+
+export interface ProjectReviewScope {
+  locationIds: number[];
+  placeIds: string[];
+}
+
+export interface ReviewQueryFilters {
+  min_rating: number;
+  limit: number;
+  offset: number;
+  order: 'asc' | 'desc';
+}
+
+function hashReviewFilters(filters: ReviewQueryFilters, scope: ProjectReviewScope): string {
   const key = [
-    locationIds.join(','),
-    String(sc.min_rating),
-    String(sc.limit),
-    String(sc.offset),
-    sc.order,
+    scope.locationIds.join(','),
+    scope.placeIds.join(','),
+    String(filters.min_rating),
+    String(filters.limit),
+    String(filters.offset),
+    filters.order,
   ].join('|');
   return crypto.createHash('md5').update(key).digest('hex').slice(0, 12);
+}
+
+function normalizePlaceIds(
+  selectedPlaceIds: string[] | string | null | undefined,
+  legacyPlaceId: string | null | undefined,
+  primaryPlaceId: string | null | undefined
+): string[] {
+  const ids = Array.isArray(selectedPlaceIds)
+    ? selectedPlaceIds
+    : typeof selectedPlaceIds === 'string'
+      ? selectedPlaceIds.replace(/[{}"]/g, '').split(',')
+      : [];
+
+  const normalized = ids
+    .concat(legacyPlaceId ? [legacyPlaceId] : [])
+    .concat(primaryPlaceId ? [primaryPlaceId] : [])
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+
+  return [...new Set(normalized)];
+}
+
+export async function getProjectReviewScope(
+  project: ReviewScopeProject
+): Promise<ProjectReviewScope> {
+  const db = getDb();
+  const placeIds = normalizePlaceIds(
+    project.selected_place_ids,
+    project.selected_place_id,
+    project.primary_place_id
+  );
+
+  if (!project.organization_id) {
+    return { locationIds: [], placeIds };
+  }
+
+  const rows = await db.raw(
+    'SELECT id FROM public.locations WHERE organization_id = ?',
+    [project.organization_id]
+  );
+  const locations: { id: number }[] = rows.rows || rows;
+
+  return {
+    locationIds: locations.map((row) => row.id),
+    placeIds,
+  };
+}
+
+function hasReviewScope(scope: ProjectReviewScope): boolean {
+  return scope.locationIds.length > 0 || scope.placeIds.length > 0;
+}
+
+function buildVisibleReviewQuery(scope: ProjectReviewScope) {
+  const db = getDb();
+  return db('reviews')
+    .where(function () {
+      if (scope.locationIds.length > 0) this.whereIn('location_id', scope.locationIds);
+      if (scope.placeIds.length > 0) this.orWhereIn('place_id', scope.placeIds);
+    })
+    .where('hidden', false)
+    .whereBetween('stars', [1, 5]);
 }
 
 /**
@@ -91,12 +173,14 @@ async function fetchReviewBlock(templateId: string, slug: string): Promise<Revie
 /**
  * Fetch reviews for given location IDs with filters, with Redis caching.
  */
-async function fetchReviews(
-  locationIds: number[],
-  sc: ReviewBlockShortcode
+export async function fetchReviews(
+  scope: ProjectReviewScope,
+  filters: ReviewQueryFilters
 ): Promise<ReviewRow[]> {
+  if (!hasReviewScope(scope)) return [];
+
   const redis = getRedis();
-  const filterHash = hashReviewFilters(sc, locationIds);
+  const filterHash = hashReviewFilters(filters, scope);
   const cacheKey = `reviews:${filterHash}`;
 
   try {
@@ -106,13 +190,11 @@ async function fetchReviews(
     // Cache miss
   }
 
-  const db = getDb();
-  const reviews = await db('reviews')
-    .whereIn('location_id', locationIds)
-    .where('stars', '>=', sc.min_rating)
-    .orderBy('review_created_at', sc.order)
-    .limit(sc.limit)
-    .offset(sc.offset)
+  const reviews = await buildVisibleReviewQuery(scope)
+    .where('stars', '>=', filters.min_rating)
+    .orderBy('review_created_at', filters.order)
+    .limit(filters.limit)
+    .offset(filters.offset)
     .select(
       'stars',
       'text',
@@ -138,12 +220,14 @@ async function fetchReviews(
  * Fetch total count of reviews matching filters, with Redis caching.
  * Mirrors fetchReviews query logic but returns only the count.
  */
-async function fetchReviewCount(
-  locationIds: number[],
-  sc: ReviewBlockShortcode
+export async function fetchReviewCount(
+  scope: ProjectReviewScope,
+  filters: ReviewQueryFilters
 ): Promise<number> {
+  if (!hasReviewScope(scope)) return 0;
+
   const redis = getRedis();
-  const filterHash = hashReviewFilters(sc, locationIds);
+  const filterHash = hashReviewFilters(filters, scope);
   const cacheKey = `reviews-count:${filterHash}`;
 
   try {
@@ -153,10 +237,8 @@ async function fetchReviewCount(
     // Cache miss
   }
 
-  const db = getDb();
-  const result = await db('reviews')
-    .whereIn('location_id', locationIds)
-    .where('stars', '>=', sc.min_rating)
+  const result = await buildVisibleReviewQuery(scope)
+    .where('stars', '>=', filters.min_rating)
     .count('* as total')
     .first();
 
@@ -192,10 +274,18 @@ export async function resolveReviewBlocks(
   const db = getDb();
   const project = await db('projects')
     .where('id', projectId)
-    .select('organization_id', 'generated_hostname', 'custom_domain')
+    .select(
+      'id',
+      'organization_id',
+      'generated_hostname',
+      'custom_domain',
+      'selected_place_id',
+      'selected_place_ids',
+      'primary_place_id'
+    )
     .first();
 
-  if (!project?.organization_id) {
+  if (!project) {
     // No org — remove all review block shortcodes
     let result = html;
     for (const sc of shortcodes) {
@@ -204,14 +294,8 @@ export async function resolveReviewBlocks(
     return result;
   }
 
-  // Use public schema for locations table
-  const locations = await db.raw(
-    'SELECT id, name, domain, is_primary FROM public.locations WHERE organization_id = ?',
-    [project.organization_id]
-  );
-  const locationRows: { id: number; name: string; domain: string | null; is_primary: boolean }[] = locations.rows || locations;
-
-  if (locationRows.length === 0) {
+  const scope = await getProjectReviewScope(project);
+  if (!hasReviewScope(scope)) {
     let result = html;
     for (const sc of shortcodes) {
       result = result.replace(sc.raw, '');
@@ -240,25 +324,6 @@ export async function resolveReviewBlocks(
       continue;
     }
 
-    // Resolve location IDs
-    let locationIds: number[];
-
-    if (sc.location === 'all') {
-      locationIds = locationRows.map((l) => l.id);
-    } else if (sc.location === 'primary') {
-      const loc = locationRows.find((l) => l.is_primary) || locationRows[0];
-      locationIds = [loc.id];
-    } else {
-      const loc = locationRows.find(
-        (l) => l.name === sc.location || l.domain === sc.location
-      );
-      if (!loc) {
-        result = result.replace(sc.raw, '');
-        continue;
-      }
-      locationIds = [loc.id];
-    }
-
     // For paginated mode, override limit/offset to fetch only the first page
     const isPaginated = sc.paginate !== 'none';
     const effectiveShortcode = isPaginated
@@ -266,7 +331,7 @@ export async function resolveReviewBlocks(
       : sc;
 
     // Fetch reviews
-    const reviews = await fetchReviews(locationIds, effectiveShortcode);
+    const reviews = await fetchReviews(scope, effectiveShortcode);
 
     if (reviews.length === 0) {
       result = result.replace(sc.raw, '');
@@ -302,7 +367,7 @@ export async function resolveReviewBlocks(
       hasPagination = true;
 
       // Calculate pagination metadata
-      const totalReviews = await fetchReviewCount(locationIds, sc);
+      const totalReviews = await fetchReviewCount(scope, sc);
       const perPage = sc.per_page;
       const totalPages = Math.ceil(totalReviews / perPage);
 
