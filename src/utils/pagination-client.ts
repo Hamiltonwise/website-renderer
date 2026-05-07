@@ -56,6 +56,51 @@ function fetchPage(apiBase,page,perPage,filters){
 function getGrid(container){return container}
 function getTpl(container){try{var b=atob(container.getAttribute('data-block-template')||'');var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder().decode(u)}catch(e){return''}}
 
+function setBtnLoading(btn,isLoading,label){
+  if(isLoading){
+    btn.textContent='';
+    btn.style.display='inline-flex';
+    btn.style.alignItems='center';
+    btn.style.justifyContent='center';
+    btn.style.gap='8px';
+    var spinner=document.createElement('span');spinner.className='alloro-pg-loading';
+    var text=document.createElement('span');text.textContent='Loading...';
+    btn.appendChild(spinner);btn.appendChild(text);btn.disabled=true;
+  }else{
+    btn.textContent=label;btn.disabled=false;
+  }
+}
+
+function applyEnhancements(root){
+  (root||document).querySelectorAll('[data-truncate-words]').forEach(function(el){
+    if(el.dataset.truncated==='true')return;
+    var limit=parseInt(el.getAttribute('data-truncate-words'),10);
+    if(!limit)return;
+    var fullTitle=el.getAttribute('data-full-title')||el.textContent||'';
+    var tooltip=el.querySelector('.tooltip-full');
+    if(tooltip)tooltip.remove();
+    var words=fullTitle.trim().split(/\\s+/).filter(Boolean);
+    var wasTruncated=words.length>limit;
+    el.textContent=wasTruncated?words.slice(0,limit).join(' ')+'...':fullTitle;
+    if(tooltip&&wasTruncated){
+      el.appendChild(tooltip);
+      var showTimer=null;
+      el.addEventListener('mouseenter',function(){
+        showTimer=setTimeout(function(){
+          tooltip.classList.remove('invisible','opacity-0','translate-y-1');
+          tooltip.classList.add('opacity-100','translate-y-0');
+        },100);
+      });
+      el.addEventListener('mouseleave',function(){
+        if(showTimer){clearTimeout(showTimer);showTimer=null}
+        tooltip.classList.add('invisible','opacity-0','translate-y-1');
+        tooltip.classList.remove('opacity-100','translate-y-0');
+      });
+    }
+    el.dataset.truncated='true';
+  });
+}
+
 function showError(target,retryFn){
   var d=document.createElement('div');
   d.className='alloro-pg-error';
@@ -85,10 +130,7 @@ function initLoadMore(container){
     var next=cur+1;
     if(next>total)return;
     var orig=btn.textContent;
-    btn.textContent='';
-    var spinner=document.createElement('span');spinner.className='alloro-pg-loading';
-    btn.appendChild(spinner);btn.appendChild(document.createTextNode(' Loading...'));
-    btn.disabled=true;
+    setBtnLoading(btn,true,orig);
     var perPage=container.getAttribute('data-per-page')||'9';
     var filters=container.getAttribute('data-filters')||'';
     var apiBase=container.getAttribute('data-api-base')||'';
@@ -100,11 +142,12 @@ function initLoadMore(container){
         var rendered=renderItem(tpl,item,type);
         grid.insertAdjacentHTML('beforeend',rendered);
       });
+      applyEnhancements(grid);
       container.setAttribute('data-current-page',String(next));
-      btn.textContent=orig;btn.disabled=false;
+      setBtnLoading(btn,false,orig);
       if(next>=total){ctrl.style.display='none'}
     }).catch(function(){
-      btn.textContent=orig;btn.disabled=false;
+      setBtnLoading(btn,false,orig);
       showError(ctrl,function(){btn.click()});
     });
   });
@@ -156,6 +199,7 @@ function initNumbered(container){
         var rendered=renderItem(tpl,item,type);
         grid.insertAdjacentHTML('beforeend',rendered);
       });
+      applyEnhancements(grid);
       container.setAttribute('data-current-page',String(pg));
       container.setAttribute('data-total-pages',String(data.total_pages||total));
       renderNav(pg,data.total_pages||total);
@@ -211,6 +255,7 @@ function initInfinite(container){
         var rendered=renderItem(tpl,item,type);
         grid.insertAdjacentHTML('beforeend',rendered);
       });
+      applyEnhancements(grid);
       container.setAttribute('data-current-page',String(next));
       loading=false;loader.style.display='none';
       if(next>=total)observer.disconnect();
@@ -226,6 +271,7 @@ function initInfinite(container){
 
 /* ---- init ---- */
 document.querySelectorAll('[data-alloro-paginated]').forEach(function(el){
+  applyEnhancements(el);
   var mode=el.getAttribute('data-paginate-mode');
   if(mode==='load-more')initLoadMore(el);
   else if(mode==='numbered')initNumbered(el);
