@@ -12,7 +12,6 @@ import { resolvePostBlocks } from '../services/postblock.service';
 import { resolveMenus } from '../services/menu.service';
 import { resolveReviewBlocks } from '../services/review.service';
 import { resolveRedirect as resolveRedirectForProject } from '../services/redirect.service';
-import { fetchBusinessData } from '../services/seo.service';
 import { renderPostBlockHtml } from '../utils/shortcodes';
 import { processTailwindCSS } from '../utils/tailwind';
 import type { Project, Page, SeoData } from '../types';
@@ -64,8 +63,32 @@ function buildIntegrationScript(platform: string, metadata: Record<string, any>)
   return null;
 }
 
-async function getIntegrationScripts(projectId: string): Promise<string> {
-  if (process.env.INTEGRATIONS_SCRIPT_INJECTION !== 'true') return '';
+function hasExistingIntegrationScript(html: string, platform: string, metadata: Record<string, any>): boolean {
+  if (platform === 'rybbit' && metadata.siteId) {
+    const escaped = String(metadata.siteId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`data-site-id=["']?${escaped}["'\\s>]`, 'i').test(html);
+  }
+  if (platform === 'clarity' && metadata.projectId) {
+    const pid = String(metadata.projectId);
+    return html.includes(`clarity.ms/tag/${pid}`) || html.includes(`"${pid}"`);
+  }
+  return false;
+}
+
+function injectBeforeHeadClose(html: string, scripts: string): string {
+  if (!scripts) return html;
+  if (!/<\/head>/i.test(html)) {
+    console.warn('[site] Integration scripts were available, but the HTML has no closing </head>');
+    return html;
+  }
+  return html.replace(/<\/head>/i, `${scripts}\n</head>`);
+}
+
+async function getIntegrationScripts(projectId: string, html: string): Promise<string> {
+  if (process.env.INTEGRATIONS_SCRIPT_INJECTION === 'false') {
+    console.warn('[site] Integration script injection disabled by INTEGRATIONS_SCRIPT_INJECTION=false');
+    return '';
+  }
 
   try {
     const db = getDb();
@@ -77,6 +100,7 @@ async function getIntegrationScripts(projectId: string): Promise<string> {
     const scripts: string[] = [];
     for (const row of rows) {
       const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+      if (hasExistingIntegrationScript(html, row.platform, meta)) continue;
       const script = buildIntegrationScript(row.platform, meta);
       if (script) scripts.push(script);
     }
@@ -132,10 +156,8 @@ async function assembleHtml(project: Project, page: Page): Promise<string> {
   }
 
   // Inject integration-managed tracking scripts (Rybbit, Clarity)
-  const integrationScripts = await getIntegrationScripts(project.id);
-  if (integrationScripts) {
-    html = html.replace(/<\/head>/i, `${integrationScripts}\n</head>`);
-  }
+  const integrationScripts = await getIntegrationScripts(project.id, html);
+  html = injectBeforeHeadClose(html, integrationScripts);
 
   // Tailwind CSS: compile for published, Play CDN for drafts
   html = await processTailwindCSS(html, page.status === 'draft');
@@ -170,12 +192,6 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
   const seoData = page.seo_data as SeoData | null;
   if (seoData) {
     html = injectSeoMeta(html, seoData);
-  }
-
-  // Inject integration-managed tracking scripts (Rybbit, Clarity)
-  const integrationScripts = await getIntegrationScripts(project.id);
-  if (integrationScripts) {
-    html = html.replace(/<\/head>/i, `${integrationScripts}\n</head>`);
   }
 
   // Inject code snippets (tracking scripts, analytics, etc.)
@@ -221,6 +237,10 @@ async function assembleArtifactHtml(project: Project, page: Page): Promise<strin
       html = html.replace(/<\/body>/i, `${code}\n</body>`);
     }
   }
+
+  // Inject integration-managed tracking scripts after legacy snippets so duplicates can be skipped.
+  const integrationScripts = await getIntegrationScripts(project.id, html);
+  html = injectBeforeHeadClose(html, integrationScripts);
 
   return html;
 }
@@ -269,7 +289,7 @@ async function assembleSinglePostHtml(
   const mergedSnippets = mergeCodeSnippets(templateSnippets, projectSnippets);
 
   // Use single_template from post type, or default
-  let sections = Array.isArray(postType.single_template) && postType.single_template.length > 0
+  const sections = Array.isArray(postType.single_template) && postType.single_template.length > 0
     ? postType.single_template
     : DEFAULT_SINGLE_TEMPLATE;
 
@@ -327,6 +347,10 @@ async function assembleSinglePostHtml(
   if (postSeoData) {
     html = injectSeoMeta(html, postSeoData);
   }
+
+  // Inject integration-managed tracking scripts (Rybbit, Clarity)
+  const integrationScripts = await getIntegrationScripts(project.id, html);
+  html = injectBeforeHeadClose(html, integrationScripts);
 
   // Tailwind CSS: single post pages are always published content
   html = await processTailwindCSS(html, false);
