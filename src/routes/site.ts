@@ -52,6 +52,10 @@ function getApiBaseUrl(): string {
 
 const RYBBIT_API_URL = process.env.RYBBIT_API_URL || 'https://analytics.getalloro.com';
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function buildIntegrationScript(platform: string, metadata: Record<string, any>): string | null {
   if (platform === 'rybbit' && metadata.siteId) {
     return `<script src="${RYBBIT_API_URL}/api/script.js" async data-site-id="${metadata.siteId}"></script>`;
@@ -65,12 +69,15 @@ function buildIntegrationScript(platform: string, metadata: Record<string, any>)
 
 function hasExistingIntegrationScript(html: string, platform: string, metadata: Record<string, any>): boolean {
   if (platform === 'rybbit' && metadata.siteId) {
-    const escaped = String(metadata.siteId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = escapeRegExp(String(metadata.siteId));
     return new RegExp(`data-site-id=["']?${escaped}["'\\s>]`, 'i').test(html);
   }
   if (platform === 'clarity' && metadata.projectId) {
-    const pid = String(metadata.projectId);
-    return html.includes(`clarity.ms/tag/${pid}`) || html.includes(`"${pid}"`);
+    const escaped = escapeRegExp(String(metadata.projectId));
+    return (
+      new RegExp(`clarity\\.ms/tag/["']?${escaped}["'\\s<]`, 'i').test(html) ||
+      new RegExp(`["']clarity["']\\s*,\\s*["']script["']\\s*,\\s*["']${escaped}["']`, 'i').test(html)
+    );
   }
   return false;
 }
